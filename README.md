@@ -24,7 +24,7 @@ Aplicativo móvel para controle de gastos pessoais desenvolvido com React Native
 
 ```bash
 # Clone o repositório
-git clone <URL_DO_REPOSITORIO>
+git clone https://github.com/JoaoRedroRibeiro/PI.08.git
 
 # Instale as dependências
 npm install
