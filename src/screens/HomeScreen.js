@@ -53,33 +53,6 @@ const HomeScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <SafeAreaView style={styles.safeArea}>
-        {/* Header com três botões */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleMonthlyReports}>
-            <Ionicons name="calendar-outline" size={24} color="#00C851" />
-            <Text style={styles.headerButtonText}>Relatórios</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.headerButton} onPress={handleStatistics}>
-            <Ionicons name="stats-chart-outline" size={24} color="#00C851" />
-            <Text style={styles.headerButtonText}>Estatísticas</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.headerButton} onPress={handleProfile}>
-            <Ionicons name="person-outline" size={24} color="#00C851" />
-            <Text style={styles.headerButtonText}>Perfil</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Botão de Sair */}
-        <View style={styles.logoutContainer}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#ff4444" />
-            <Text style={styles.logoutButtonText}>Sair</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Conteúdo Principal */}
         <View style={styles.mainContent}>
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeTitle}>Controle Financeiro</Text>

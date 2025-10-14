@@ -88,9 +88,6 @@ const ProfileScreen = ({ navigation }) => {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>Perfil</Text>
         <TouchableOpacity onPress={isEditing ? handleSave : handleEdit}>
           <Ionicons 

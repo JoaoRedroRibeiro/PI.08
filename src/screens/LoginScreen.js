@@ -29,7 +29,7 @@ const LoginScreen = ({ navigation }) => {
       Alert.alert('Sucesso', 'Login realizado com sucesso!', [
         {
           text: 'OK',
-          onPress: () => navigation.navigate('Statistics'),
+          onPress: () => navigation.navigate('App', {screen: 'Home'}),
         },
       ]);
     } else {

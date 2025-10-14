@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   Modal,
   Alert,
@@ -15,6 +14,7 @@ import {
   StatusBar,
   Platform,
 } from 'react-native';
+import {SafeAreaView} from 'react-native-safe-area-context'
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
@@ -428,26 +428,6 @@ const StatisticsScreen = ({ navigation }) => {
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.navButton}
-            onPress={() => navigation.navigate('MonthlyReports')}
-          >
-            <Ionicons name="calendar-outline" size={20} color="#00C851" />
-            <Text style={styles.navButtonText}>Relatórios</Text>
-          </TouchableOpacity>
-          
-          <Text style={styles.title}>Estatísticas</Text>
-          
-          <TouchableOpacity 
-            style={styles.navButton}
-            onPress={() => navigation.navigate('Profile')}
-          >
-            <Ionicons name="person-outline" size={20} color="#00C851" />
-            <Text style={styles.navButtonText}>Perfil</Text>
-          </TouchableOpacity>
-        </View>
-
         <ScrollView 
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
