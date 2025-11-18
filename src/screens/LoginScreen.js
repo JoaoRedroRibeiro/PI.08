@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,29 +13,35 @@ import {
   StatusBar,
   Image,
 } from 'react-native';
+import { loginWithEmail } from '../core/util/login'
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [verifier, setVerifier] = useState('')
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Erro', 'Por favor, preencha todos os campos');
       return;
     }
-    
-    // Verificar credenciais temporárias
-    if (email === 'admin@gmail.com' && password === 'admin123') {
-      Alert.alert('Sucesso', 'Login realizado com sucesso!', [
-        {
-          text: 'OK',
-          onPress: () => navigation.navigate('App', {screen: 'Home'}),
-        },
-      ]);
-    } else {
-      Alert.alert('Erro', 'Email ou senha incorretos');
-    }
+
+    try {
+      const response = await loginWithEmail(email, password)
+      setVerifier(response.data.verifier)
+
+    } catch (e) {
+      Alert.alert('Ops!', `Ocorreu um erro. ${e.msg ?? 'Tente novamente.'}`)
+    }    
   };
+  
+  useEffect(()=>{
+    
+    if(verifier) {
+      navigation.navigate('TwoFactor', { verifier: verifier })
+      console.log(verifier)
+    }
+  }, [verifier])
 
   const goToRegister = () => {
     navigation.navigate('Register');
@@ -45,19 +51,19 @@ const LoginScreen = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           style={styles.keyboardAvoidingView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <ScrollView 
+          <ScrollView
             contentContainerStyle={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.imageContainer}>
-              <Image 
-                source={require('./imagemlogo.jpeg')} 
+              <Image
+                source={require('./imagemlogo.jpeg')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -94,8 +100,8 @@ const LoginScreen = ({ navigation }) => {
                 />
               </View>
 
-              <TouchableOpacity 
-                style={styles.demoButton} 
+              <TouchableOpacity
+                style={styles.demoButton}
                 onPress={() => {
                   setEmail('admin@gmail.com');
                   setPassword('admin123');
@@ -104,7 +110,7 @@ const LoginScreen = ({ navigation }) => {
                 <Text style={styles.demoButtonText}>Usar credenciais de demonstração</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+              <TouchableOpacity style={styles.loginButton} onPress={() => handleLogin()}>
                 <Text style={styles.loginButtonText}>Entrar</Text>
               </TouchableOpacity>
 

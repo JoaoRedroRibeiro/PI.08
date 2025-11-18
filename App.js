@@ -1,4 +1,3 @@
-import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,6 +11,10 @@ import CameraScreen from './src/screens/CameraScreen_new';
 import RELATORIO from './src/screens/RELATORIO';
 import StatisticsScreen from './src/screens/StatisticsScreen_new';
 import ProfileScreen from './src/screens/ProfileScreen';
+import TwoFactorScreen from './src/screens/TwoFactorScreen';
+import { useContext } from 'react';
+import { AuthContext } from './src/core/context/auth';
+import AuthProvider from './src/core/context/auth';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -66,15 +69,40 @@ function TabNavigator() {
   );
 }
 
+const ProtectedRoutes = () => {
+  return (
+    <TabNavigator />
+  )
+}
+
+const PublicRoutes = () => {
+  return (
+
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name='TwoFactor' component={TwoFactorScreen} />
+      <Stack.Screen name="App" component={TabNavigator} />
+    </Stack.Navigator>
+  )
+}
+
+const AuthNavigator = () => {
+
+  const { token } = useContext(AuthContext)
+
+  return token ? (
+    <ProtectedRoutes />
+  ) : (<PublicRoutes />)
+}
+
 export default function App() {
   return (
-    <NavigationContainer>
-      <StatusBar style="auto" />
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="App" component={TabNavigator} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AuthProvider>
+      <NavigationContainer>
+        <StatusBar style="auto" />
+        <AuthNavigator />
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
