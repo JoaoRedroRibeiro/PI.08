@@ -16,7 +16,7 @@ const { width, height } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation }) => {
   const handleCameraPress = () => {
-    navigation.navigate('Camera');
+    navigation.navigate('Câmera');
   };
 
   const handleMonthlyReports = () => {

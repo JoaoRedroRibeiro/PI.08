@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,38 @@ import {
   Image,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { loadUserData } from '../core/util/load-user';
+import { updateProfile } from '../core/util/update-user';
+
+const USER_ID = 1;
+
+// ProfileField movido para fora e memoizado
+const ProfileField = React.memo(({ label, value, field, icon, isEditing, editedInfo, setEditedInfo }) => (
+  <View style={styles.fieldContainer}>
+    <View style={styles.fieldHeader}>
+      <Ionicons name={icon} size={20} color="#00C851" />
+      <Text style={styles.fieldLabel}>{label}</Text>
+    </View>
+
+    {isEditing ? (
+      <TextInput
+        style={styles.fieldInput}
+        value={editedInfo[field] ?? ''}
+        onChangeText={(text) => setEditedInfo((prev) => ({ ...prev, [field]: text }))}
+        placeholder={label}
+        placeholderTextColor="#666"
+        autoCorrect={false}
+        autoCapitalize="none"
+        keyboardAppearance="dark"
+      />
+    ) : (
+      <Text style={styles.fieldValue}>{value}</Text>
+    )}
+  </View>
+));
 
 const ProfileScreen = ({ navigation }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -26,6 +56,7 @@ const ProfileScreen = ({ navigation }) => {
     profession: 'Desenvolvedor',
   });
 
+  const [userId, setUserId] = useState(USER_ID);
   const [editedInfo, setEditedInfo] = useState(userInfo);
 
   const handleEdit = () => {
@@ -33,10 +64,26 @@ const ProfileScreen = ({ navigation }) => {
     setEditedInfo(userInfo);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // atualiza estado local primeiro
     setUserInfo(editedInfo);
-    setIsEditing(false);
-    Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
+
+    try {
+      // enviar editedInfo (corrigido)
+      console.log('Salvando perfil com as seguintes informações:', editedInfo);
+      await updateProfile(userId, editedInfo);
+
+      setIsEditing(false);
+      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
+    } catch (error) {
+      console.log(error);
+      if (error.response?.data) {
+        Alert.alert('Ops', `Ocorreu um erro: ${error.response.data.detail[0].msg}`);
+        return;
+      } else if (error.request) {
+        Alert.alert('Ops', 'verifique sua conexão com a internet e tente novamente mais tarde.');
+      }
+    }
   };
 
   const handleCancel = () => {
@@ -45,172 +92,200 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const handleLogout = () => {
-    Alert.alert(
-      'Sair',
-      'Tem certeza que deseja sair do aplicativo?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: () => navigation.navigate('Login'),
-        },
-      ]
-    );
+    Alert.alert('Sair', 'Tem certeza que deseja sair do aplicativo?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: () => navigation.navigate('Login'),
+      },
+    ]);
   };
 
-  const ProfileField = ({ label, value, field, icon }) => (
-    <View style={styles.fieldContainer}>
-      <View style={styles.fieldHeader}>
-        <Ionicons name={icon} size={20} color="#00C851" />
-        <Text style={styles.fieldLabel}>{label}</Text>
-      </View>
-      {isEditing ? (
-        <TextInput
-          style={styles.fieldInput}
-          value={editedInfo[field]}
-          onChangeText={(text) => setEditedInfo({...editedInfo, [field]: text})}
-          placeholder={label}
-          placeholderTextColor="#666"
-        />
-      ) : (
-        <Text style={styles.fieldValue}>{value}</Text>
-      )}
-    </View>
-  );
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await loadUserData(userId);
+
+        const mapped = {
+          name: data.full_name,
+          email: data.email,
+          phone: data.phone_number,
+          birthDate: new Date(data.birthdate).toLocaleDateString(),
+          address: data.address,
+          city: data.city,
+          profession: data.profession,
+        };
+
+        setUserInfo(mapped);
+        setEditedInfo(mapped);
+      } catch (error) {
+        console.log(error);
+        if (error.response?.data) {
+          Alert.alert('Ops', `Ocorreu um erro: ${error.response.data.detail[0].msg}`);
+          return;
+        } else if (error.request) {
+          Alert.alert('Ops', 'Verifique sua conexão com a internet e tente novamente mais tarde.');
+        }
+      }
+    })();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Perfil</Text>
-        <TouchableOpacity onPress={isEditing ? handleSave : handleEdit}>
-          <Ionicons 
-            name={isEditing ? "checkmark" : "create"} 
-            size={24} 
-            color="#00C851" 
+        <TouchableOpacity onPress={isEditing ? ()=> handleSave() : ()=> handleEdit()}>
+          <Ionicons
+            name={isEditing ? 'checkmark' : 'create'}
+            size={24}
+            color="#00C851"
           />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Avatar Section */}
-        <View style={styles.avatarSection}>
-          <View style={styles.avatarContainer}>
-            <Image 
-              source={require('../../assets/logo.jpg')} 
-              style={styles.avatar}
-              resizeMode="cover"
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) + 10 : 0}
+      >
+        <ScrollView
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+        >
+          {/* Avatar Section */}
+          <View style={styles.avatarSection}>
+            <View style={styles.avatarContainer}>
+              <Image
+                source={require('../../assets/logo.jpg')}
+                style={styles.avatar}
+                resizeMode="cover"
+              />
+              <TouchableOpacity style={styles.avatarEdit}>
+                <Ionicons name="camera" size={16} color="#000" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.userName}>{userInfo.name}</Text>
+            <Text style={styles.userEmail}>{userInfo.email}</Text>
+          </View>
+
+          {/* Personal Info */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Informações Pessoais</Text>
+
+            <ProfileField
+              label="Nome Completo"
+              value={userInfo.name}
+              field="name"
+              icon="person-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
             />
-            <TouchableOpacity style={styles.avatarEdit}>
-              <Ionicons name="camera" size={16} color="#000" />
+            <ProfileField
+              label="Email"
+              value={userInfo.email}
+              field="email"
+              icon="mail-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
+            />
+            <ProfileField
+              label="Telefone"
+              value={userInfo.phone}
+              field="phone"
+              icon="call-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
+            />
+            <ProfileField
+              label="Data de Nascimento"
+              value={userInfo.birthDate}
+              field="birthDate"
+              icon="calendar-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
+            />
+            <ProfileField
+              label="Profissão"
+              value={userInfo.profession}
+              field="profession"
+              icon="briefcase-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
+            />
+          </View>
+
+          {/* Address */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Endereço</Text>
+
+            <ProfileField
+              label="Endereço"
+              value={userInfo.address}
+              field="address"
+              icon="location-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
+            />
+            <ProfileField
+              label="Cidade"
+              value={userInfo.city}
+              field="city"
+              icon="business-outline"
+              isEditing={isEditing}
+              editedInfo={editedInfo}
+              setEditedInfo={setEditedInfo}
+            />
+          </View>
+
+          {/* Account Settings */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Conta</Text>
+
+            <TouchableOpacity style={styles.settingItem}>
+              <Ionicons name="lock-closed-outline" size={20} color="#00C851" />
+              <Text style={styles.settingText}>Alterar Senha</Text>
+              <Ionicons name="chevron-forward" size={20} color="#666" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingItem}>
+              <Ionicons name="notifications-outline" size={20} color="#00C851" />
+              <Text style={styles.settingText}>Notificações</Text>
+              <Ionicons name="chevron-forward" size={20} color="#666" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingItem}>
+              <Ionicons name="shield-checkmark-outline" size={20} color="#00C851" />
+              <Text style={styles.settingText}>Privacidade</Text>
+              <Ionicons name="chevron-forward" size={20} color="#666" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.userName}>{userInfo.name}</Text>
-          <Text style={styles.userEmail}>{userInfo.email}</Text>
-        </View>
 
-        {/* Personal Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Informações Pessoais</Text>
-          
-          <ProfileField
-            label="Nome Completo"
-            value={userInfo.name}
-            field="name"
-            icon="person-outline"
-          />
-          
-          <ProfileField
-            label="Email"
-            value={userInfo.email}
-            field="email"
-            icon="mail-outline"
-          />
-          
-          <ProfileField
-            label="Telefone"
-            value={userInfo.phone}
-            field="phone"
-            icon="call-outline"
-          />
-          
-          <ProfileField
-            label="Data de Nascimento"
-            value={userInfo.birthDate}
-            field="birthDate"
-            icon="calendar-outline"
-          />
-          
-          <ProfileField
-            label="Profissão"
-            value={userInfo.profession}
-            field="profession"
-            icon="briefcase-outline"
-          />
-        </View>
+          {/* Buttons */}
+          <View style={styles.actionSection}>
+            {isEditing && (
+              <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+            )}
 
-        {/* Address Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Endereço</Text>
-          
-          <ProfileField
-            label="Endereço"
-            value={userInfo.address}
-            field="address"
-            icon="location-outline"
-          />
-          
-          <ProfileField
-            label="Cidade"
-            value={userInfo.city}
-            field="city"
-            icon="business-outline"
-          />
-        </View>
-
-        {/* Account Settings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Conta</Text>
-          
-          <TouchableOpacity style={styles.settingItem}>
-            <Ionicons name="lock-closed-outline" size={20} color="#00C851" />
-            <Text style={styles.settingText}>Alterar Senha</Text>
-            <Ionicons name="chevron-forward" size={20} color="#666" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.settingItem}>
-            <Ionicons name="notifications-outline" size={20} color="#00C851" />
-            <Text style={styles.settingText}>Notificações</Text>
-            <Ionicons name="chevron-forward" size={20} color="#666" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.settingItem}>
-            <Ionicons name="shield-checkmark-outline" size={20} color="#00C851" />
-            <Text style={styles.settingText}>Privacidade</Text>
-            <Ionicons name="chevron-forward" size={20} color="#666" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionSection}>
-          {isEditing && (
-            <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={20} color="#fff" />
+              <Text style={styles.logoutButtonText}>Sair da Conta</Text>
             </TouchableOpacity>
-          )}
-          
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#fff" />
-            <Text style={styles.logoutButtonText}>Sair da Conta</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
