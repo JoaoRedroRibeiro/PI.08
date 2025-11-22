@@ -16,6 +16,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { loadUserData } from '../core/util/load-user';
 import { updateProfile } from '../core/util/update-user';
+import { api } from '../core/api';
+import * as ImagePicker from 'expo-image-picker'
+import { updateProfileImage } from '../core/util/update-profile-image';
 
 const USER_ID = 1;
 
@@ -45,6 +48,7 @@ const ProfileField = React.memo(({ label, value, field, icon, isEditing, editedI
 ));
 
 const ProfileScreen = ({ navigation }) => {
+
   const [isEditing, setIsEditing] = useState(false);
   const [userInfo, setUserInfo] = useState({
     name: 'João Silva',
@@ -58,6 +62,7 @@ const ProfileScreen = ({ navigation }) => {
 
   const [userId, setUserId] = useState(USER_ID);
   const [editedInfo, setEditedInfo] = useState(userInfo);
+  const [imageUrl, setImageUrl] = useState('')
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -85,6 +90,37 @@ const ProfileScreen = ({ navigation }) => {
       }
     }
   };
+
+  const handleImageUpdate = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (status !== "granted") {
+      Alert.alert("Permissão necessária", "Acesso à galeria é necessário.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      allowsMultipleSelection: false
+    });
+
+    if (result.canceled) return;
+
+    const uri = result.assets[0].uri
+
+    try {
+
+      await updateProfileImage(userId, uri)
+      setImageUrl(uri)
+    } catch (error) {
+
+      console.log(error)
+    }
+
+  };
+
 
   const handleCancel = () => {
     setIsEditing(false);
@@ -131,6 +167,25 @@ const ProfileScreen = ({ navigation }) => {
     })();
   }, []);
 
+  useEffect(() => {
+
+    (async () => {
+      try {
+
+        const image = await api.get(`/users/${userId}/profile_image?download=false`)
+
+        if (image.status !== 200) {
+          setImageUrl('')
+          return
+        }
+        setImageUrl(process.env.EXPO_PUBLIC_API_BASE_URL + `/users/${userId}/profile_image?download=false`)
+      } catch {
+        setImageUrl('')
+      }f
+
+    })()
+  }, [])
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
@@ -138,7 +193,7 @@ const ProfileScreen = ({ navigation }) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Perfil</Text>
-        <TouchableOpacity onPress={isEditing ? ()=> handleSave() : ()=> handleEdit()}>
+        <TouchableOpacity onPress={isEditing ? () => handleSave() : () => handleEdit()}>
           <Ionicons
             name={isEditing ? 'checkmark' : 'create'}
             size={24}
@@ -161,11 +216,11 @@ const ProfileScreen = ({ navigation }) => {
           <View style={styles.avatarSection}>
             <View style={styles.avatarContainer}>
               <Image
-                source={require('../../assets/logo.jpg')}
+                source={imageUrl ? { uri: imageUrl, height: 100, width: 100 } : require('../../assets/logo.jpg')}
                 style={styles.avatar}
                 resizeMode="cover"
               />
-              <TouchableOpacity style={styles.avatarEdit}>
+              <TouchableOpacity style={styles.avatarEdit} onPress={() => handleImageUpdate()}>
                 <Ionicons name="camera" size={16} color="#000" />
               </TouchableOpacity>
             </View>
