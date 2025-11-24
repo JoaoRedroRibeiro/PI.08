@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,21 +13,43 @@ import {
   TextInput,
   StatusBar,
   Platform,
+  ActivityIndicator, // Adicionado
 } from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context'
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { BarChart, PieChart } from 'react-native-gifted-charts'
+
+// Importa funções da API (assumindo que 'api.js' está no diretório anterior)
+import { createGoal, getGoals, updateGoal, getGoalProgress } from '../core/util/goals';
+import { getAnalysis } from '../core/util/analysis';
+import { getEntries } from '../core/util/entries';
 
 const { width, height } = Dimensions.get('window');
+
+// Definições de ID de usuário e data atual simuladas para a API
+const CURRENT_USER_ID = 1; // ID de usuário fixo para teste
+const CURRENT_MONTH = new Date().getMonth() + 1; // Mês atual (Novembro, 1-12)
+const CURRENT_YEAR = new Date().getFullYear(); // Ano atual
+const MONTHS_PT = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
 
 const StatisticsScreen = ({ navigation }) => {
   const [selectedBarIndex, setSelectedBarIndex] = useState(null);
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(null);
   const [isDetailModalVisible, setIsDetailModalVisible] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState(null);
-  const [currentYear, setCurrentYear] = useState(2024);
   const [monthlyGoal, setMonthlyGoal] = useState(1200);
+  const [currentGoalId, setCurrentGoalId] = useState(null); // ID da meta atual
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [tempGoal, setTempGoal] = useState('1200');
+  const [goalProgressData, setGoalProgressData] = useState({ target: 1200, current: 0, percentage: 0 }); // Dados do progresso
+  const [isLoading, setIsLoading] = useState(true);
+  const [entries, setEntries] = useState([])
+  const [rawEntries, setRawEntries] = useState([]) // adicionada: guarda entries brutas para o Donut
+  const [currentMonthExp, setCurrentMonthExp] = useState(0)
+  const [goals, setGoals] = useState([])
 
   // Dados dos gráficos - apenas visualização
   const monthlyData = [
@@ -41,6 +63,8 @@ const StatisticsScreen = ({ navigation }) => {
     { month: 'Ago', amount: 1350, status: 'warning', transactions: 35, prediction: 1320 },
     { month: 'Set', amount: 1180, status: 'warning', transactions: 33, prediction: 1200 },
     { month: 'Out', amount: 950, status: 'good', transactions: 30, prediction: 970 },
+    // Mês simulado para acompanhar a meta definida no CURRENT_MONTH
+    { month: 'Nov', amount: 1450, status: 'danger', transactions: 35, prediction: 1320 },
   ];
 
   const categoryData = [
@@ -51,7 +75,6 @@ const StatisticsScreen = ({ navigation }) => {
     { name: 'Outros', amount: 150, percentage: 11, color: '#FECA57', trend: '-3%', lastMonth: 155 },
   ];
 
-  // Novos dados para gráficos adicionais
   const weeklyData = [
     { day: 'Seg', amount: 85 },
     { day: 'Ter', amount: 120 },
@@ -63,136 +86,264 @@ const StatisticsScreen = ({ navigation }) => {
   ];
 
   const comparisonData = [
-    { period: 'Este Mês', amount: 1350, color: '#00C851' },
+    { period: 'Este Mês', amount: 1450, color: '#FF6B6B' }, // Usando o valor simulado do "Novembro"
     { period: 'Mês Anterior', amount: 1180, color: '#FFC107' },
     { period: 'Mesmo Mês Ano Anterior', amount: 1420, color: '#FF5722' },
   ];
 
-  const goalData = {
-    target: 1200,
-    current: 1350,
-    percentage: (1350 / 1200) * 100
-  };
-
   // Animações
   const barAnimations = useRef(monthlyData.map(() => new Animated.Value(0))).current;
-  const categoryAnimations = useRef(categoryData.map(() => new Animated.Value(1))).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    // Animar barras
-    const barStagger = Animated.stagger(100, 
-      barAnimations.map(anim => 
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: false,
+  // --- Lógica de Integração da API ---
+
+  const fetchGoals = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const { data } = await getGoals({
+        user_id: CURRENT_USER_ID,
+        initial_month: 1,
+        initial_year: CURRENT_YEAR,
+        final_month: 12,
+        final_year: CURRENT_YEAR
+      });
+
+      if (data) {
+
+        for (let g of data) {
+          if (g.month == CURRENT_MONTH) {
+            setMonthlyGoal(g.value)
+          }
+        }
+
+        const gs = data.map((g) => {
+          return {
+            value: g.value,
+            month: g.month
+          }
         })
-      )
-    );
 
-    // Animar fade-in geral
-    const fadeIn = Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    });
+        setGoals(gs)
 
-    Animated.parallel([barStagger, fadeIn]).start();
+        // Recalcula entradas usando as metas recém-buscadas
+        fetchEntries(gs);
+
+      } else {
+        // Se não houver meta, usa a padrão de R$1200
+        const defaultValue = 1200;
+        setMonthlyGoal(defaultValue);
+        setTempGoal(defaultValue.toString());
+        setCurrentGoalId(null);
+        // Ainda tenta recalcular entradas sem metas
+        fetchEntries([]);
+      }
+
+      console.log(goals)
+    } catch (error) {
+      console.error('Erro ao buscar metas:', error);
+      // Mantém a meta padrão
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const animatePulse = () => {
-    Animated.sequence([
-      Animated.timing(pulseAnim, {
-        toValue: 1.1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(pulseAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  const fetchExpendidures = useCallback(async () => {
+
+    try {
+
+      const { data } = await getAnalysis({ year: CURRENT_YEAR, month: CURRENT_MONTH })
+      setCurrentMonthExp(data.totalDespesas)
+    } catch {
+
+    }
+  }, [fetchGoals])
+
+  // Função utilitária para parsear datas sem depender do parsing automático (evita deslocamento de timezone)
+  const parseDateSafe = (dateStr) => {
+    if (!dateStr) return new Date();
+    // Se for string no formato "YYYY-MM-DD" ou "YYYY-MM-DDTHH:MM:SS..."
+    const onlyDateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+    if (onlyDateMatch) {
+      const y = parseInt(onlyDateMatch[1], 10);
+      const m = parseInt(onlyDateMatch[2], 10) - 1; // monthIndex
+      const d = parseInt(onlyDateMatch[3], 10);
+      return new Date(y, m, d);
+    }
+    // fallback
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date();
+    return d;
   };
 
-  const handleBarPress = (item, index) => {
-    Vibration.vibrate(50);
-    setSelectedBarIndex(index);
-    const goalDifference = monthlyGoal - item.amount;
-    const percentageOfGoal = ((item.amount / monthlyGoal) * 100).toFixed(1);
+  // reorganiza mapEntries para calcular cores com base na meta do mês (se existir)
+  const mapEntries = (entriesList = [], goalsList = []) => {
     
-    setSelectedDetail({
-      type: 'month',
-      title: `Gastos de ${item.month}`,
-      value: `R$ ${item.amount}`,
-      color: getStatusColor(item.status),
-      status: getStatusText(item.status),
-      details: [
-        `Status: ${getStatusText(item.status)}`,
-        `Meta mensal: R$ ${monthlyGoal}`,
-        `${goalDifference >= 0 ? 'Economia' : 'Excesso'}: R$ ${Math.abs(goalDifference)}`,
-        `${percentageOfGoal}% da meta atingida`,
-        `Total de transações: ${item.transactions}`,
-        `Previsão vs Real: R$ ${item.prediction} vs R$ ${item.amount}`,
-      ]
+    // inicializa estrutura de meses com valores 0 e lista de entradas
+    const months = MONTHS_PT.map((m, idx) => ({
+      monthIndex: idx,
+      value: 0,
+      label: m.slice(0, 3),
+      rawEntries: [], // guarda as entradas originais do mês
+    }));
+
+    // acumula valores por mês e armazena entradas por mês
+    for (let entry of entriesList || []) {
+      const date = parseDateSafe(entry.entry_date); // evita deslocamento por timezone
+      const monthIdx = date.getMonth();
+      months[monthIdx].value += entry.value;
+      months[monthIdx].rawEntries.push(entry);
+    }
+
+    // transforma em formato esperado pelo BarChart, definindo cor baseada na meta do mês
+    const result = months.map((m) => {
+      const goalObj = goalsList.find(g => g.month === m.monthIndex + 1);
+      const goalValue = goalObj ? goalObj.value : null;
+
+      let frontColor = '#4ECDC4'; // cor padrão quando não há meta
+      if (goalValue || goalValue === 0) {
+        const ratio = goalValue === 0 ? 0 : (m.value / goalValue);
+        if (ratio >= 1) frontColor = '#FF6B6B';       // acima da meta
+        else if (ratio >= 0.9) frontColor = '#FFC107';// próximo da meta
+        else frontColor = '#00C851';                  // dentro da meta
+      }
+
+      // onPress será chamado pelo BarChart quando o usuário tocar na barra (gifted-charts aceita onPress por item)
+      const onPress = () => {
+        // prepara detalhes a partir das entradas reais do mês
+        const entriesDetails = m.rawEntries.map((e) => {
+          const d = new Date(e.entry_date);
+          const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+          const desc = e.description ? ` - ${e.description}` : '';
+          return `${dateStr} — R$ ${e.value.toFixed(2)}${desc}`;
+        });
+
+        // Se não houver entradas individuais, inclui uma linha com total
+        const details = entriesDetails.length > 0 ? entriesDetails : [`Total: R$ ${m.value.toFixed(2)} (sem transações detalhadas)`];
+
+        // Atualiza estado para abrir modal com os dados do mês clicado
+        setSelectedDetail({
+          type: 'month',
+          title: `Gastos de ${MONTHS_PT[m.monthIndex]}`,
+          value: `R$ ${m.value.toFixed(2)}`,
+          color: frontColor,
+          details,
+          entries: m.rawEntries, // passa também o array original caso queira mais manipulação
+          monthIndex: m.monthIndex + 1,
+          goal: goalValue,
+        });
+        setIsDetailModalVisible(true);
+        animatePulse(); // comentário: animação ao abrir modal
+      };
+
+      return {
+        value: m.value,
+        label: m.label,
+        frontColor,
+        onPress, // giftet-charts usa onPress por item para detectar cliques
+        topLabelComponent: () => (
+          <Text style={{ color: frontColor, fontSize: 10, marginBottom: 1 }}>{`R$ ${m.value}`}</Text>
+        ),
+        labelTextStyle: {
+          color: '#ffffff',
+          fontSize: 10
+        }
+      };
     });
-    setIsDetailModalVisible(true);
-    animatePulse();
+
+    return result;
   };
 
-  const handleCategoryPress = (item, index) => {
-    Vibration.vibrate(50);
-    setSelectedCategoryIndex(index);
-    
-    // Animar categoria selecionada
-    Animated.timing(categoryAnimations[index], {
-      toValue: 1.1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      Animated.timing(categoryAnimations[index], {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    });
+  const fetchEntries = useCallback(async (goalsParam = goals) => {
 
-    const monthlyAverage = (item.amount / 30).toFixed(2);
-    const trendDirection = item.trend.includes('+') ? 'Aumento' : 'Redução';
-    const trendValue = item.trend.replace(/[+-]/, '');
-    
-    setSelectedDetail({
-      type: 'category',
-      title: item.name,
-      value: `R$ ${item.amount} (${item.percentage}%)`,
-      color: item.color,
-      details: [
-        `Gasto médio diário: R$ ${monthlyAverage}`,
-        `${trendDirection} de ${trendValue} vs mês anterior`,
-        `Mês anterior: R$ ${item.lastMonth}`,
-        `Diferença: R$ ${(item.amount - item.lastMonth).toFixed(2)}`,
-        `Projeção próximo mês: R$ ${(item.amount * 1.05).toFixed(2)}`,
-      ]
-    });
-    setIsDetailModalVisible(true);
-  };
+    try {
 
-  const handleGoalUpdate = () => {
+      const { data } = await getEntries({
+        user_id: CURRENT_USER_ID,
+        // Corrige índices de mês (0-11). antes usava 1 e 12 causando intervalo errado.
+        start_date: new Date(CURRENT_YEAR, 0, 1).toISOString().split('T')[0],
+        end_date: new Date(CURRENT_YEAR, 11, 31).toISOString().split('T')[0],
+        entry_type_id: 2
+      })
+      // salva raw (para agregar por categoria no Donut) e prepara dados do BarChart
+      setRawEntries(data || []);
+      setEntries(mapEntries(data, goalsParam))
+    } catch {
+
+    }
+  }, [goals])
+
+  useEffect(() => {
+    fetchGoals();
+    fetchExpendidures()
+    // animate barras e fade-in
+    const barStagger = Animated.stagger(100,
+      barAnimations.map(anim =>
+        Animated.timing(anim, { toValue: 1, duration: 800, useNativeDriver: false })
+      )
+    );
+    const fadeIn = Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true });
+    Animated.parallel([barStagger, fadeIn]).start();
+  }, [fetchGoals]);
+
+
+  const handleGoalUpdate = async () => {
     const newGoal = parseFloat(tempGoal);
     if (isNaN(newGoal) || newGoal <= 0) {
       Alert.alert('Erro', 'Por favor, insira um valor válido para a meta');
       return;
     }
-    
-    setMonthlyGoal(newGoal);
+
     setShowGoalModal(false);
-    Alert.alert('Sucesso', `Meta mensal atualizada para R$ ${newGoal.toFixed(2)}`);
+    setIsLoading(true);
+
+    try {
+      if (currentGoalId) {
+        // Atualiza a meta existente (updateGoal)
+        await updateGoal({
+          month: CURRENT_MONTH,
+          year: CURRENT_YEAR,
+          value: newGoal,
+          user_id: CURRENT_USER_ID,
+          category_id: null,
+        }, currentGoalId);
+        Alert.alert('Sucesso', `Meta mensal atualizada para R$ ${newGoal.toFixed(2)}.`);
+      } else {
+        // Cria uma nova meta (createGoal)
+        const newGoalResponse = await createGoal({
+          month: CURRENT_MONTH,
+          year: CURRENT_YEAR,
+          value: newGoal,
+          user_id: CURRENT_USER_ID,
+          category_id: null,
+        });
+        setCurrentGoalId(newGoalResponse.id);
+        Alert.alert('Sucesso', `Nova meta mensal criada: R$ ${newGoal.toFixed(2)}.`);
+      }
+
+      setMonthlyGoal(newGoal);
+      // Rebusca metas e entradas para atualizar cores das barras
+      await fetchGoals();
+
+    } catch (error) {
+      console.error('Erro ao atualizar/criar meta:', error);
+      Alert.alert('Erro', 'Não foi possível salvar a meta no servidor. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Funções Auxiliares (Mantidas) ---
+
+  const animatePulse = () => {
+    Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+    ]).start();
   };
 
   const getStatusText = (status) => {
-    switch(status) {
+    switch (status) {
       case 'good': return 'Bom Resultado';
       case 'warning': return 'Controlado';
       case 'danger': return 'Gastos Extremos';
@@ -209,31 +360,89 @@ const StatisticsScreen = ({ navigation }) => {
     }
   };
 
+  const handleBarPress = (item, index) => {
+    Vibration.vibrate(50);
+    setSelectedBarIndex(index);
+    const goalDifference = monthlyGoal - item.amount;
+    const percentageOfGoal = ((item.amount / monthlyGoal) * 100).toFixed(1);
+
+    setSelectedDetail({
+      type: 'month',
+      title: `Gastos de ${item.month}`,
+      value: `R$ ${item.amount}`,
+      color: getStatusColor(item.status),
+      status: getStatusText(item.status),
+      details: [
+        `Status: ${getStatusText(item.status)}`,
+        `Meta mensal: R$ ${monthlyGoal.toFixed(2)}`,
+        `${goalDifference >= 0 ? 'Economia' : 'Excesso'}: R$ ${Math.abs(goalDifference).toFixed(2)}`,
+        `${percentageOfGoal}% da meta atingida`,
+        `Total de transações: ${item.transactions}`,
+        `Previsão vs Real: R$ ${item.prediction} vs R$ ${item.amount}`,
+      ]
+    });
+    setIsDetailModalVisible(true);
+    animatePulse();
+  };
+
+  const handleCategoryPress = (item, index) => {
+    Vibration.vibrate(50);
+    setSelectedCategoryIndex(index);
+
+    // Animação de escala rápida (Mantida)
+    Animated.timing(pulseAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }).start(() => {
+      Animated.timing(pulseAnim, { toValue: 1, duration: 100, useNativeDriver: true }).start();
+    });
+
+    const monthlyAverage = (item.amount / 30).toFixed(2);
+    const trendDirection = item.trend.includes('+') ? 'Aumento' : 'Redução';
+    const trendValue = item.trend.replace(/[+-]/, '');
+
+    setSelectedDetail({
+      type: 'category',
+      title: item.name,
+      value: `R$ ${item.amount} (${item.percentage}%)`,
+      color: item.color,
+      details: [
+        `Gasto médio diário: R$ ${monthlyAverage}`,
+        `${trendDirection} de ${trendValue} vs mês anterior`,
+        `Mês anterior: R$ ${item.lastMonth}`,
+        `Diferença: R$ ${(item.amount - item.lastMonth).toFixed(2)}`,
+        `Projeção próximo mês: R$ ${(item.amount * 1.05).toFixed(2)}`,
+      ]
+    });
+    setIsDetailModalVisible(true);
+  };
+
+  // --- Componentes de Visualização (Usando goalProgressData) ---
+
   const SummaryCards = () => {
-    const currentMonth = monthlyData[monthlyData.length - 1];
+    const currentMonth = monthlyData.find(item => item.month === 'Nov'); // Busca o mês atual simulado
+    if (!currentMonth) return null;
+
     const totalSpent = monthlyData.reduce((sum, item) => sum + item.amount, 0);
     const averageSpent = totalSpent / monthlyData.length;
     const goalProgress = ((currentMonth.amount / monthlyGoal) * 100).toFixed(1);
-    
+
     return (
       <View style={styles.summaryContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.summaryCard}
           onPress={() => setShowGoalModal(true)}
         >
           <Text style={styles.summaryLabel}>Meta Mensal</Text>
-          <Text style={styles.summaryValue}>R$ {monthlyGoal}</Text>
+          <Text style={styles.summaryValue}>R$ {monthlyGoal.toFixed(0)}</Text>
           <Text style={styles.summarySubtext}>Toque para alterar</Text>
         </TouchableOpacity>
-        
+
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Mês Atual</Text>
-          <Text style={[styles.summaryValue, { color: getStatusColor(currentMonth.status) }]}>
-            R$ {currentMonth.amount}
+          <Text style={[styles.summaryValue, { color: 'red' }]}>
+            R$ {currentMonthExp}
           </Text>
-          <Text style={styles.summarySubtext}>{goalProgress}% da meta</Text>
+          <Text style={styles.summarySubtext}>{((currentMonthExp / monthlyGoal) * 100).toFixed(2)}% da meta</Text>
         </View>
-        
+
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Média Mensal</Text>
           <Text style={styles.summaryValue}>R$ {averageSpent.toFixed(0)}</Text>
@@ -242,14 +451,15 @@ const StatisticsScreen = ({ navigation }) => {
       </View>
     );
   };
+
   const maxWeekly = Math.max(...weeklyData.map(item => item.amount));
   const maxComparison = Math.max(...comparisonData.map(item => item.amount));
   const maxAmount = Math.max(...monthlyData.map(item => item.amount));
 
   const MonthlyBarChart = () => (
     <View style={styles.chartContainer}>
-      <Text style={styles.chartTitle}>Gastos Mensais {currentYear}</Text>
-      
+      <Text style={styles.chartTitle}>Gastos Mensais {CURRENT_YEAR}</Text>
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.horizontalChart}>
           {monthlyData.map((item, index) => {
@@ -257,10 +467,10 @@ const StatisticsScreen = ({ navigation }) => {
               inputRange: [0, 1],
               outputRange: [0, (item.amount / maxAmount) * 120],
             });
-            
+
             return (
-              <TouchableOpacity 
-                key={index} 
+              <TouchableOpacity
+                key={index}
                 style={styles.monthlyBarContainer}
                 onPress={() => handleBarPress(item, index)}
               >
@@ -291,10 +501,10 @@ const StatisticsScreen = ({ navigation }) => {
           const height = (item.amount / maxWeekly) * 80;
           return (
             <View key={index} style={styles.weeklyBarContainer}>
-              <View 
+              <View
                 style={[
                   styles.weeklyBar,
-                  { 
+                  {
                     height,
                     backgroundColor: index === 5 || index === 6 ? '#FF6B6B' : '#00C851'
                   }
@@ -310,34 +520,17 @@ const StatisticsScreen = ({ navigation }) => {
 
   const GoalProgressChart = () => (
     <View style={styles.chartContainer}>
-      <Text style={styles.chartTitle}>Meta Mensal</Text>
+      <Text style={styles.chartTitle}>Meta Mensal (R$ {monthlyGoal})</Text>
       <View style={styles.goalContainer}>
-        <View style={styles.goalCircle}>
-          <View style={[
-            styles.goalProgress,
-            {
-              transform: [{ 
-                rotate: `${Math.min(goalData.percentage, 100) * 3.6}deg` 
-              }]
-            }
-          ]} />
-          <View style={styles.goalCenter}>
-            <Text style={styles.goalPercentage}>
-              {Math.round(goalData.percentage)}%
-            </Text>
-            <Text style={styles.goalLabel}>da meta</Text>
-          </View>
-        </View>
         <View style={styles.goalInfo}>
-          <Text style={styles.goalCurrent}>R$ {goalData.current}</Text>
-          <Text style={styles.goalTarget}>Meta: R$ {goalData.target}</Text>
+          <Text style={styles.goalTarget}>Gasto: R$ {currentMonthExp.toFixed(0)}</Text>
           <Text style={[
             styles.goalStatus,
-            { color: goalData.percentage > 100 ? '#FF6B6B' : '#00C851' }
+            { color: ((currentMonthExp / monthlyGoal) * 100).toFixed(2) > 100 ? '#FF6B6B' : '#00C851' }
           ]}>
-            {goalData.percentage > 100 
-              ? `R$ ${(goalData.current - goalData.target).toFixed(0)} acima da meta`
-              : `R$ ${(goalData.target - goalData.current).toFixed(0)} restante`
+            {((currentMonthExp / monthlyGoal) * 100).toFixed(2) > 100
+              ? `R$ ${(currentMonthExp - monthlyGoal).toFixed(0)} acima da meta`
+              : `R$ ${(monthlyGoal - currentMonthExp).toFixed(0)} restante`
             }
           </Text>
         </View>
@@ -355,7 +548,7 @@ const StatisticsScreen = ({ navigation }) => {
             <View key={index} style={styles.comparisonRow}>
               <Text style={styles.comparisonLabel}>{item.period}</Text>
               <View style={styles.comparisonBarContainer}>
-                <View 
+                <View
                   style={[
                     styles.comparisonBar,
                     {
@@ -374,81 +567,167 @@ const StatisticsScreen = ({ navigation }) => {
   );
 
   const CategoryDonutChart = () => {
-    const total = categoryData.reduce((sum, item) => sum + item.amount, 0);
-    let cumulativePercentage = 0;
-    
+    // Agrupa entries brutas do mês atual por category_name
+    const monthEntries = (rawEntries || []).filter(e => {
+      try {
+        return parseDateSafe(e.entry_date).getMonth() + 1 === CURRENT_MONTH;
+      } catch {
+        return false;
+      }
+    });
+
+    // inicializa mapa das categorias conhecidas
+    const catMap = {};
+    categoryData.forEach(cat => {
+      catMap[cat.name] = { name: cat.name, color: cat.color, total: 0, entries: [] };
+    });
+    // "Outros" bucket (caso alguma entry tenha categoria diferente)
+    if (!catMap['Outros']) {
+      catMap['Outros'] = { name: 'Outros', color: '#FECA57', total: 0, entries: [] };
+    }
+
+    for (const e of monthEntries) {
+      const cname = e.category_name || 'Outros';
+      if (catMap[cname]) {
+        catMap[cname].total += parseFloat(e.value || 0);
+        catMap[cname].entries.push(e);
+      } else {
+        catMap['Outros'].total += parseFloat(e.value || 0);
+        catMap['Outros'].entries.push(e);
+      }
+    }
+
+    const segments = Object.values(catMap).filter(s => s.total > 0);
+    const total = segments.reduce((s, seg) => s + seg.total, 0);
+
+    const pieData = segments.map((seg) => ({
+      name: seg.name,
+      population: Number(parseFloat(seg.total) || 0),
+      color: seg.color,
+      legendFontColor: '#ffffff',
+      legendFontSize: 12,
+    }));
+
+    const openCategoryModal = (seg) => {
+      // prepara detalhes e abre modal (usa o modal já existente)
+      const details = (seg.entries || []).map(en => {
+        const d = parseDateSafe(en.entry_date);
+        const dateStr = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+        const desc = en.description ? ` - ${en.description}` : '';
+        return `• ${dateStr} — R$ ${parseFloat(en.value).toFixed(2)}${desc}`;
+      });
+
+      setSelectedDetail({
+        type: 'category',
+        title: seg.name,
+        value: `R$ ${seg.total.toFixed(2)}`,
+        color: seg.color,
+        details: details.length > 0 ? details : [`Total: R$ ${seg.total.toFixed(2)} (sem transações detalhadas)`],
+        entries: seg.entries,
+      });
+      setIsDetailModalVisible(true);
+      animatePulse();
+    };
+
     return (
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Categorias - Outubro</Text>
-        <View style={styles.donutContainer}>
-          <View style={styles.donutChart}>
-            {categoryData.map((item, index) => {
-              const percentage = (item.amount / total) * 100;
-              const strokeDasharray = `${percentage} ${100 - percentage}`;
-              const strokeDashoffset = -cumulativePercentage;
-              cumulativePercentage += percentage;
-              
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.donutSegment,
-                    {
-                      borderColor: item.color,
-                      borderWidth: 8,
-                      transform: [{ rotate: `${strokeDashoffset * 3.6}deg` }]
-                    }
-                  ]}
-                  onPress={() => handleCategoryPress(item, index)}
-                />
-              );
-            })}
-            <View style={styles.donutCenter}>
-              <Text style={styles.donutTotal}>R$ {total}</Text>
-              <Text style={styles.donutLabel}>Total</Text>
-            </View>
-          </View>
-          
-          <View style={styles.categoryLegend}>
-            {categoryData.map((item, index) => (
-              <View key={index} style={styles.legendRow}>
+        <Text style={styles.chartTitle}>Categorias - {MONTHS_PT ? MONTHS_PT[CURRENT_MONTH-1] : 'Mês Atual'}</Text>
+
+        <View style={{ alignItems: 'center', marginBottom: 10 }}>
+          <PieChart
+            data={pieData}
+            width={Math.min(width * 0.9, 500)}
+            height={220}
+            chartConfig={{
+              backgroundGradientFrom: '#1a1a1a',
+              backgroundGradientTo: '#1a1a1a',
+              color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+              labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+              propsForLabels: { fontSize: '12' }
+            }}
+            accessor="population"
+            backgroundColor="transparent"
+            paddingLeft="15"
+            absolute // mostra valores absolutos no centro da legenda
+            hasLegend={false} // usaremos legenda customizada abaixo
+          />
+        </View>
+
+        <View style={styles.categoryLegend}>
+          {categoryData.map((item, index) => {
+            const seg = segments.find(s => s.name === item.name);
+            return (
+              <TouchableOpacity
+                key={index}
+                style={styles.legendRow}
+                onPress={() => seg && openCategoryModal(seg)}
+              >
                 <View style={[styles.legendDot, { backgroundColor: item.color }]} />
                 <Text style={styles.legendCategory}>{item.name}</Text>
-                <Text style={styles.legendAmount}>R$ {item.amount}</Text>
-              </View>
-            ))}
-          </View>
+                <Text style={styles.legendAmount}>R$ {seg ? seg.total.toFixed(0) : '0'}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
     );
   };
 
+  // --- Renderização Principal ---
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#00C851" />
+        <Text style={styles.loadingText}>Carregando estatísticas e metas...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
       <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <ScrollView 
+
+        <ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
           <SummaryCards />
-          <MonthlyBarChart />
-          <WeeklySpendingChart />
+          <View style={{
+            width: width * 0.95,
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 5
+          }}>
+            <Text style={{color: 'white', fontSize: 20}}>Gastos Mensais {CURRENT_YEAR}</Text>
+            <BarChart
+              data={entries}
+              width={width * 0.9}       // garante que o gráfico ocupe só a tela
+              barWidth={20}             // ajuste conforme necessário
+              spacing={9}              // distância entre barras
+              barBorderTopLeftRadius={7}
+              barBorderTopRightRadius={7}
+              hideRules
+              backgroundColor="#2a2a2a"
+              hideYAxisText
+              yAxisThickness={0}
+              yAxisLabelWidth={0}
+            />
+          </View>
           <GoalProgressChart />
-          <ComparisonChart />
           <CategoryDonutChart />
         </ScrollView>
 
-        {/* Modal de Detalhes */}
+        {/* Modal de Detalhes (Mantido) */}
         <Modal
           visible={isDetailModalVisible}
           transparent={true}
           animationType="slide"
         >
           <View style={styles.modalOverlay}>
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.modalContent,
                 { transform: [{ scale: pulseAnim }] }
@@ -457,11 +736,11 @@ const StatisticsScreen = ({ navigation }) => {
               <View style={styles.modalHeader}>
                 <View style={[styles.modalColorIndicator, { backgroundColor: selectedDetail?.color }]} />
                 <Text style={styles.modalTitle}>{selectedDetail?.title}</Text>
-                <TouchableOpacity onPress={() => setIsDetailModalVisible(false)}>
+                <TouchableOpacity onPress={() => { setIsDetailModalVisible(false); setSelectedDetail(null); }}>
                   <Ionicons name="close" size={24} color="#ffffff" />
                 </TouchableOpacity>
               </View>
-              
+
               <View style={styles.modalBody}>
                 <Text style={styles.modalValue}>{selectedDetail?.value}</Text>
                 {selectedDetail?.status && (
@@ -469,16 +748,37 @@ const StatisticsScreen = ({ navigation }) => {
                     {selectedDetail.status}
                   </Text>
                 )}
+
                 
-                {selectedDetail?.details?.map((detail, index) => (
-                  <Text key={index} style={styles.modalDetail}>• {detail}</Text>
-                ))}
+                {selectedDetail?.status && (
+  <Text style={[styles.modalStatus, { color: selectedDetail.color }]}>
+    {selectedDetail.status}
+  </Text>
+)}
+
+{selectedDetail?.entries && selectedDetail.entries.length > 0 ? (
+  selectedDetail.entries.map((en, idx) => {
+    const d = parseDateSafe(en.entry_date);
+    const dateStr = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+    const desc = en.description ? ` - ${en.description}` : '';
+    return (
+      <Text key={`entry-${idx}`} style={styles.modalDetail}>
+        • {dateStr} — R$ {en.value.toFixed(2)}{desc}
+      </Text>
+    );
+  })
+) : (
+  selectedDetail?.details?.map((detail, index) => (
+    <Text key={index} style={styles.modalDetail}>• {detail}</Text>
+  ))
+)}
+
               </View>
             </Animated.View>
           </View>
         </Modal>
 
-        {/* Modal de Definir Meta */}
+        {/* Modal de Definir Meta (Integrado) */}
         <Modal
           visible={showGoalModal}
           transparent={true}
@@ -492,10 +792,10 @@ const StatisticsScreen = ({ navigation }) => {
                   <Ionicons name="close" size={24} color="#ffffff" />
                 </TouchableOpacity>
               </View>
-              
+
               <View style={styles.goalContent}>
-                <Text style={styles.goalLabel}>Meta atual: R$ {monthlyGoal}</Text>
-                
+                <Text style={styles.goalLabel}>Meta atual: R$ {monthlyGoal.toFixed(2)}</Text>
+
                 <View style={styles.goalInputContainer}>
                   <Text style={styles.goalInputLabel}>Nova meta (R$):</Text>
                   <TextInput
@@ -507,7 +807,7 @@ const StatisticsScreen = ({ navigation }) => {
                     keyboardType="numeric"
                   />
                 </View>
-                
+
                 <View style={styles.goalSuggestions}>
                   <Text style={styles.goalSuggestionsTitle}>Sugestões baseadas no seu histórico:</Text>
                   {[1000, 1200, 1500, 2000].map((suggestion) => (
@@ -520,16 +820,16 @@ const StatisticsScreen = ({ navigation }) => {
                     </TouchableOpacity>
                   ))}
                 </View>
-                
+
                 <View style={styles.goalActions}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.goalCancelButton}
                     onPress={() => setShowGoalModal(false)}
                   >
                     <Text style={styles.goalCancelText}>Cancelar</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={styles.goalSaveButton}
                     onPress={handleGoalUpdate}
                   >
@@ -545,6 +845,8 @@ const StatisticsScreen = ({ navigation }) => {
   );
 };
 
+// --- Estilos (Styles) ---
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -552,7 +854,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingBottom: 15, // Espaço para não conflitar com botões do celular
+    paddingBottom: 0,
   },
   header: {
     flexDirection: 'row',
@@ -611,7 +913,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: 'center',
   },
-  
+
   // Gráfico mensal horizontal
   horizontalChart: {
     flexDirection: 'row',
@@ -709,9 +1011,10 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   goalTarget: {
-    fontSize: 14,
+    fontSize: 20,
     color: '#cccccc',
     marginBottom: 5,
+    fontWeight: 'bold'
   },
   goalStatus: {
     fontSize: 12,
@@ -863,7 +1166,7 @@ const styles = StyleSheet.create({
   },
   summaryContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 15,
+    paddingHorizontal: 0,
     marginBottom: 20,
     gap: 10,
   },
@@ -889,28 +1192,9 @@ const styles = StyleSheet.create({
   },
   summarySubtext: {
     fontSize: 10,
-    color: '#666666',
+    color: '#ccc9c9ff',
   },
-  goalLine: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#00C851',
-    opacity: 0.8,
-  },
-  goalLineLabel: {
-    position: 'absolute',
-    right: 5,
-    fontSize: 10,
-    color: '#00C851',
-    fontWeight: 'bold',
-  },
-  exceedIndicator: {
-    position: 'absolute',
-    top: -15,
-    right: 5,
-  },
+  // Modal da Meta
   goalModal: {
     backgroundColor: '#1a1a1a',
     borderRadius: 15,
@@ -993,6 +1277,17 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#00C851',
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 

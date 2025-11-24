@@ -2,10 +2,15 @@ import { api } from '../api'
 
 /**
  * Resumo de um mês específico de um ano.
- * @param {{year: number | null, month: number | null}} params 
+ * @param {{year: number, month: number}} params 
  */
 export async function getAnalysis(params) {
     
-    const { data } = await api.get('/analysis/monthly_summary')
+    const urlParams = new URLSearchParams()
+
+    if(params.year) urlParams.set('year', params.year)
+    if(params.month) urlParams.set('month', params.month)
+    
+    const { data } = await api.get('/analysis/monthly_summary?' + urlParams.toString())
     return data
 }

@@ -35,6 +35,7 @@ const TwoFactorScreen = ({ navigation }) => {
             const response = await twoFactorValidation(code, verifier)
             setToken(response.data.access_token)
             await AsynStorage.setItem('RB_AT', response.data.access_token)
+            console.log(response.data.access_token)
         } catch {
             Alert.alert('Ops', 'Ocorreu um erro, tente novamente mais tarde.')
         }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { updateProfile } from '../core/util/update-user';
 import { api } from '../core/api';
 import * as ImagePicker from 'expo-image-picker'
 import { updateProfileImage } from '../core/util/update-profile-image';
+import { AuthContext } from '../core/context/auth'
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const USER_ID = 1;
 
@@ -63,6 +65,7 @@ const ProfileScreen = ({ navigation }) => {
   const [userId, setUserId] = useState(USER_ID);
   const [editedInfo, setEditedInfo] = useState(userInfo);
   const [imageUrl, setImageUrl] = useState('')
+  const { setToken } = useContext(AuthContext)
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -133,7 +136,10 @@ const ProfileScreen = ({ navigation }) => {
       {
         text: 'Sair',
         style: 'destructive',
-        onPress: () => navigation.navigate('Login'),
+        onPress: async () => {
+          setToken(null)
+          await AsyncStorage.clear()
+        },
       },
     ]);
   };
@@ -181,7 +187,7 @@ const ProfileScreen = ({ navigation }) => {
         setImageUrl(process.env.EXPO_PUBLIC_API_BASE_URL + `/users/${userId}/profile_image?download=false`)
       } catch {
         setImageUrl('')
-      }f
+      } f
 
     })()
   }, [])

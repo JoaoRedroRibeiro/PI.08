@@ -25,7 +25,17 @@ export async function createEntry(entry, user_id) {
  * @param {{title: string | null, start_date: string | null, end_date: string | null, user_id: number, category_id: number | null, entry_type_id: number | null}} params 
  */
 export async function getEntries(params) {
-    const { data } = await api.get(`/entries?title=${params.title ?? null}&start_date=${params.start_date ? new Date(params.start_date).toISOString().split('T')[0] : null}&end_date=${params.end_date ? new Date(params.end_date).toISOString().split('T')[0] : null}&user_id=${params.user_id}&category_id=${params.category_id ?? null}&entry_type_id=${params.entry_type_id ?? null}`)
+
+    const urlSearch = new URLSearchParams()
+
+    urlSearch.set('user_id', params.user_id)
+
+    if(params.start_date) urlSearch.set('start_date', params.start_date)
+    if(params.end_date) urlSearch.set('end_date', params.end_date)
+    if(params.category_id) urlSearch.set('category_id', params.category_id)
+    if(params.entry_type_id) urlSearch.set('entry_type_id', params.entry_type_id)
+
+    const { data } = await api.get(`/entries?${urlSearch}`)
 
     return data
 }
