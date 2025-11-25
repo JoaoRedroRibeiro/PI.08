@@ -23,6 +23,7 @@ import { BarChart, PieChart } from 'react-native-gifted-charts'
 import { createGoal, getGoals, updateGoal, getGoalProgress } from '../core/util/goals';
 import { getAnalysis } from '../core/util/analysis';
 import { getEntries } from '../core/util/entries';
+import { useFocusEffect } from '@react-navigation/native'
 
 const { width, height } = Dimensions.get('window');
 
@@ -44,7 +45,6 @@ const StatisticsScreen = ({ navigation }) => {
   const [currentGoalId, setCurrentGoalId] = useState(null); // ID da meta atual
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [tempGoal, setTempGoal] = useState('1200');
-  const [goalProgressData, setGoalProgressData] = useState({ target: 1200, current: 0, percentage: 0 }); // Dados do progresso
   const [isLoading, setIsLoading] = useState(true);
   const [entries, setEntries] = useState([])
   const [rawEntries, setRawEntries] = useState([]) // adicionada: guarda entries brutas para o Donut
@@ -273,18 +273,40 @@ const StatisticsScreen = ({ navigation }) => {
     }
   }, [goals])
 
-  useEffect(() => {
-    fetchGoals();
-    fetchExpendidures()
-    // animate barras e fade-in
-    const barStagger = Animated.stagger(100,
-      barAnimations.map(anim =>
-        Animated.timing(anim, { toValue: 1, duration: 800, useNativeDriver: false })
-      )
-    );
-    const fadeIn = Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true });
-    Animated.parallel([barStagger, fadeIn]).start();
-  }, [fetchGoals]);
+  // Atualiza os dados sempre que a tela ganha foco (navegação)
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+
+      const load = async () => {
+        try {
+          await fetchGoals();
+          await fetchExpendidures();
+
+          // animação das barras e fade-in
+          const barStagger = Animated.stagger(
+            100,
+            barAnimations.map((anim) =>
+              Animated.timing(anim, { toValue: 1, duration: 800, useNativeDriver: false })
+            )
+          );
+          const fadeIn = Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true });
+          Animated.parallel([barStagger, fadeIn]).start();
+        } catch (e) {
+          // silencioso — erros já tratados nas funções chamadas
+        }
+      };
+
+      load();
+
+      return () => {
+        mounted = false;
+        // reset das animações para próxima entrada na tela (opcional)
+        barAnimations.forEach(anim => anim.setValue(0));
+        fadeAnim.setValue(0);
+      };
+    }, [fetchGoals, fetchExpendidures, barAnimations, fadeAnim])
+  );
 
 
   const handleGoalUpdate = async () => {
@@ -417,40 +439,50 @@ const StatisticsScreen = ({ navigation }) => {
   // --- Componentes de Visualização (Usando goalProgressData) ---
 
   const SummaryCards = () => {
-    const currentMonth = monthlyData.find(item => item.month === 'Nov'); // Busca o mês atual simulado
-    if (!currentMonth) return null;
+    // calcula totais mensais a partir das entries brutas (rawEntries)
+    const monthlyTotals = new Array(12).fill(0);
+    for (const e of rawEntries || []) {
+      const d = parseDateSafe(e.entry_date);
+      if (isNaN(d.getTime())) continue;
+      const idx = d.getMonth(); // 0..11
+      const val = Number(parseFloat(e.value ?? e.amount ?? 0) || 0);
+      monthlyTotals[idx] += val;
+    }
 
-    const totalSpent = monthlyData.reduce((sum, item) => sum + item.amount, 0);
-    const averageSpent = totalSpent / monthlyData.length;
-    const goalProgress = ((currentMonth.amount / monthlyGoal) * 100).toFixed(1);
-
-    return (
-      <View style={styles.summaryContainer}>
-        <TouchableOpacity
-          style={styles.summaryCard}
-          onPress={() => setShowGoalModal(true)}
-        >
-          <Text style={styles.summaryLabel}>Meta Mensal</Text>
-          <Text style={styles.summaryValue}>R$ {monthlyGoal.toFixed(0)}</Text>
-          <Text style={styles.summarySubtext}>Toque para alterar</Text>
-        </TouchableOpacity>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Mês Atual</Text>
-          <Text style={[styles.summaryValue, { color: 'red' }]}>
-            R$ {currentMonthExp}
-          </Text>
-          <Text style={styles.summarySubtext}>{((currentMonthExp / monthlyGoal) * 100).toFixed(2)}% da meta</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Média Mensal</Text>
-          <Text style={styles.summaryValue}>R$ {averageSpent.toFixed(0)}</Text>
-          <Text style={styles.summarySubtext}>{monthlyData.length} meses</Text>
-        </View>
-      </View>
-    );
-  };
+    const totalSpent = monthlyTotals.reduce((sum, v) => sum + v, 0);
+    const monthsWithData = monthlyTotals.filter(v => v > 0).length;
+    const averageSpent = monthsWithData > 0 ? (totalSpent / monthsWithData) : 0;
+    const currentMonthTotal = monthlyTotals[CURRENT_MONTH - 1] || 0;
+    const goalProgress = monthlyGoal ? ((currentMonthTotal / monthlyGoal) * 100).toFixed(1) : '0.0';
+    // console.log(rawEntries)
+ 
+     return (
+       <View style={styles.summaryContainer}>
+         <TouchableOpacity
+           style={styles.summaryCard}
+           onPress={() => setShowGoalModal(true)}
+         >
+           <Text style={styles.summaryLabel}>Meta Mensal</Text>
+           <Text style={styles.summaryValue}>R$ {monthlyGoal.toFixed(0)}</Text>
+           <Text style={styles.summarySubtext}>Toque para alterar</Text>
+         </TouchableOpacity>
+ 
+         <View style={styles.summaryCard}>
+           <Text style={styles.summaryLabel}>Mês Atual</Text>
+           <Text style={[styles.summaryValue, { color: currentMonthTotal > monthlyGoal ? '#FF6B6B' : '#00C851' }]}>
+             R$ {currentMonthTotal.toFixed(2)}
+           </Text>
+           <Text style={styles.summarySubtext}>{goalProgress}% da meta</Text>
+         </View>
+ 
+         <View style={styles.summaryCard}>
+           <Text style={styles.summaryLabel}>Média Mensal</Text>
+           <Text style={styles.summaryValue}>R$ {averageSpent.toFixed(0)}</Text>
+           <Text style={styles.summarySubtext}>{monthsWithData} meses com dados</Text>
+         </View>
+       </View>
+     );
+   };
 
   const maxWeekly = Math.max(...weeklyData.map(item => item.amount));
   const maxComparison = Math.max(...comparisonData.map(item => item.amount));
@@ -632,27 +664,6 @@ const StatisticsScreen = ({ navigation }) => {
     return (
       <View style={styles.chartContainer}>
         <Text style={styles.chartTitle}>Categorias - {MONTHS_PT ? MONTHS_PT[CURRENT_MONTH-1] : 'Mês Atual'}</Text>
-
-        <View style={{ alignItems: 'center', marginBottom: 10 }}>
-          <PieChart
-            data={pieData}
-            width={Math.min(width * 0.9, 500)}
-            height={220}
-            chartConfig={{
-              backgroundGradientFrom: '#1a1a1a',
-              backgroundGradientTo: '#1a1a1a',
-              color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-              propsForLabels: { fontSize: '12' }
-            }}
-            accessor="population"
-            backgroundColor="transparent"
-            paddingLeft="15"
-            absolute // mostra valores absolutos no centro da legenda
-            hasLegend={false} // usaremos legenda customizada abaixo
-          />
-        </View>
-
         <View style={styles.categoryLegend}>
           {categoryData.map((item, index) => {
             const seg = segments.find(s => s.name === item.name);

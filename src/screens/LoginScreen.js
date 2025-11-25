@@ -32,12 +32,12 @@ const LoginScreen = ({ navigation }) => {
 
     } catch (e) {
       Alert.alert('Ops!', `Ocorreu um erro. ${e.msg ?? 'Tente novamente.'}`)
-    }    
+    }
   };
-  
-  useEffect(()=>{
-    
-    if(verifier) {
+
+  useEffect(() => {
+
+    if (verifier) {
       navigation.navigate('TwoFactor', { verifier: verifier })
       console.log(verifier)
     }
@@ -99,18 +99,7 @@ const LoginScreen = ({ navigation }) => {
                   onSubmitEditing={handleLogin}
                 />
               </View>
-
-              <TouchableOpacity
-                style={styles.demoButton}
-                onPress={() => {
-                  setEmail('admin@gmail.com');
-                  setPassword('admin123');
-                }}
-              >
-                <Text style={styles.demoButtonText}>Usar credenciais de demonstração</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.loginButton} onPress={() => handleLogin()}>
+                 <TouchableOpacity style={styles.loginButton} onPress={() => handleLogin()}>
                 <Text style={styles.loginButtonText}>Entrar</Text>
               </TouchableOpacity>
 

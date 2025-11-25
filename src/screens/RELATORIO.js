@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,11 @@ import {
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getEntries, createEntry } from '../core/util/entries';
+import { getCategories } from '../core/util/categories';
 
 const { width, height } = Dimensions.get('window');
+const CURRENT_USER = 1
 
 const RELATORIO = ({ navigation }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -28,138 +31,66 @@ const RELATORIO = ({ navigation }) => {
   const [manualExpense, setManualExpense] = useState({
     description: '',
     amount: '',
-    category: 'Alimentação',
+    category_id: null, // id da categoria selecionada
+    entry_type_id: 2, // 2 = despesa (default)
     date: new Date().toLocaleDateString('pt-BR'),
-    merchant: ''
   });
 
   // Gerar anos dinamicamente baseado no ano atual
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
-  // Dados fictícios de gastos por mês
-  const financialData = {
-    2024: {
-      janeiro: {
-        total: 2850.50, gastos: [
-          { categoria: 'Alimentação', valor: 850.50, data: '15/01' },
-          { categoria: 'Transporte', valor: 450.00, data: '20/01' },
-          { categoria: 'Lazer', valor: 300.00, data: '25/01' },
-          { categoria: 'Saúde', valor: 1250.00, data: '30/01' }
-        ]
-      },
-      fevereiro: {
-        total: 3200.75, gastos: [
-          { categoria: 'Alimentação', valor: 920.25, data: '10/02' },
-          { categoria: 'Transporte', valor: 480.00, data: '18/02' },
-          { categoria: 'Roupas', valor: 650.50, data: '22/02' },
-          { categoria: 'Entretenimento', valor: 1150.00, data: '28/02' }
-        ]
-      },
-      março: {
-        total: 2650.30, gastos: [
-          { categoria: 'Alimentação', valor: 780.30, data: '05/03' },
-          { categoria: 'Transporte', valor: 420.00, data: '12/03' },
-          { categoria: 'Educação', valor: 800.00, data: '20/03' },
-          { categoria: 'Outros', valor: 650.00, data: '25/03' }
-        ]
-      },
-      abril: {
-        total: 3450.80, gastos: [
-          { categoria: 'Alimentação', valor: 950.80, data: '08/04' },
-          { categoria: 'Transporte', valor: 500.00, data: '15/04' },
-          { categoria: 'Casa', valor: 1200.00, data: '22/04' },
-          { categoria: 'Lazer', valor: 800.00, data: '28/04' }
-        ]
-      },
-      maio: {
-        total: 2890.45, gastos: [
-          { categoria: 'Alimentação', valor: 820.45, data: '03/05' },
-          { categoria: 'Transporte', valor: 470.00, data: '10/05' },
-          { categoria: 'Saúde', valor: 900.00, data: '18/05' },
-          { categoria: 'Tecnologia', valor: 700.00, data: '25/05' }
-        ]
-      },
-      junho: {
-        total: 3100.90, gastos: [
-          { categoria: 'Alimentação', valor: 880.90, data: '05/06' },
-          { categoria: 'Transporte', valor: 520.00, data: '12/06' },
-          { categoria: 'Viagem', valor: 1200.00, data: '20/06' },
-          { categoria: 'Outros', valor: 500.00, data: '28/06' }
-        ]
-      },
-      julho: {
-        total: 2750.60, gastos: [
-          { categoria: 'Alimentação', valor: 750.60, data: '07/07' },
-          { categoria: 'Transporte', valor: 450.00, data: '14/07' },
-          { categoria: 'Entretenimento', valor: 800.00, data: '21/07' },
-          { categoria: 'Casa', valor: 750.00, data: '28/07' }
-        ]
-      },
-      agosto: {
-        total: 3350.25, gastos: [
-          { categoria: 'Alimentação', valor: 900.25, data: '04/08' },
-          { categoria: 'Transporte', valor: 550.00, data: '11/08' },
-          { categoria: 'Educação', valor: 1000.00, data: '18/08' },
-          { categoria: 'Lazer', valor: 900.00, data: '25/08' }
-        ]
-      },
-      setembro: {
-        total: 2980.15, gastos: [
-          { categoria: 'Alimentação', valor: 830.15, data: '06/09' },
-          { categoria: 'Transporte', valor: 480.00, data: '13/09' },
-          { categoria: 'Roupas', valor: 700.00, data: '20/09' },
-          { categoria: 'Tecnologia', valor: 970.00, data: '27/09' }
-        ]
-      },
-      outubro: {
-        total: 3180.40, gastos: [
-          { categoria: 'Alimentação', valor: 880.40, data: '04/10' },
-          { categoria: 'Transporte', valor: 500.00, data: '11/10' },
-          { categoria: 'Casa', valor: 1000.00, data: '18/10' },
-          { categoria: 'Saúde', valor: 800.00, data: '25/10' }
-        ]
-      },
-      novembro: {
-        total: 2850.90, gastos: [
-          { categoria: 'Alimentação', valor: 750.90, data: '02/11' },
-          { categoria: 'Transporte', valor: 450.00, data: '09/11' },
-          { categoria: 'Presentes', valor: 900.00, data: '16/11' },
-          { categoria: 'Outros', valor: 750.00, data: '23/11' }
-        ]
-      },
-      dezembro: {
-        total: 4200.75, gastos: [
-          { categoria: 'Alimentação', valor: 1100.75, data: '01/12' },
-          { categoria: 'Transporte', valor: 600.00, data: '08/12' },
-          { categoria: 'Presentes', valor: 1500.00, data: '15/12' },
-          { categoria: 'Festa', valor: 1000.00, data: '31/12' }
-        ]
-      }
-    },
-    2023: {
-      janeiro: {
-        total: 2650.30, gastos: [
-          { categoria: 'Alimentação', valor: 750.30, data: '12/01' },
-          { categoria: 'Transporte', valor: 400.00, data: '18/01' },
-          { categoria: 'Outros', valor: 1500.00, data: '25/01' }
-        ]
-      },
-      fevereiro: {
-        total: 2800.45, gastos: [
-          { categoria: 'Alimentação', valor: 800.45, data: '10/02' },
-          { categoria: 'Transporte', valor: 450.00, data: '15/02' },
-          { categoria: 'Lazer', valor: 1550.00, data: '28/02' }
-        ]
-      },
-      março: {
-        total: 3200.80, gastos: [
-          { categoria: 'Alimentação', valor: 950.80, data: '05/03' },
-          { categoria: 'Transporte', valor: 500.00, data: '12/03' },
-          { categoria: 'Casa', valor: 1750.00, data: '25/03' }
-        ]
-      }
-    }
+  // financialData agora é carregado dinamicamente via getEntries
+  const [financialData, setFinancialData] = useState({});
+  const [categories, setCategories] = useState([]); // categorias da API
+  const CURRENT_USER_ID = 1; // ajustar conforme autenticação real
+
+  // Mapeamento local de nomes de categoria -> ícone Ionicons
+  // Ajuste os nomes conforme suas categorias reais
+  const ICON_BY_CATEGORY = {
+    'Alimentação': 'fast-food',
+    'Transporte': 'car',
+    'Lazer': 'game-controller',
+    'Saúde': 'medkit',
+    'Saude': 'medkit',
+    'Casa': 'home',
+    'Contas': 'receipt',
+    'Receita': 'cash',
+    'Outros': 'pricetag',
+    'Educação': 'school',
+    'Entretenimento': 'film',
+    'Roupas': 'shirt',
+  };
+
+  // Helpers para cor e contraste
+  const hexToRgba = (hex, alpha = 1) => {
+    if (!hex) hex = '#00C851';
+    let h = String(hex).replace('#', '').trim();
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    if (h.length !== 6) return `rgba(0,200,81,${alpha})`;
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  };
+
+  const hexToRgbObj = (hex) => {
+    if (!hex) hex = '#000000';
+    let h = String(hex).replace('#', '').trim();
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    if (h.length !== 6) return { r: 0, g: 0, b: 0 };
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16)
+    };
+  };
+
+  const getContrastingTextColor = (hex) => {
+    const { r, g, b } = hexToRgbObj(hex);
+    // luminance aproximada
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.65 ? '#000' : '#fff';
   };
 
   const months = [
@@ -167,13 +98,111 @@ const RELATORIO = ({ navigation }) => {
     'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
   ];
 
+  const buildEmptyYear = useCallback(() => {
+    const monthsTemplate = {};
+    months.forEach((m) => {
+      // total = despesas (mantido para somatório anual)
+      // receitasTotal = soma de receitas do mês
+      monthsTemplate[m] = { total: 0, receitasTotal: 0, gastos: [] };
+    });
+    return monthsTemplate;
+  }, []);
+
+  // Função utilitária para parse seguro de datas (evita problemas com timezone / formatos)
+  const parseDateSafe = (dateStr) => {
+    if (!dateStr) return new Date();
+    const onlyDateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+    if (onlyDateMatch) {
+      const y = parseInt(onlyDateMatch[1], 10);
+      const m = parseInt(onlyDateMatch[2], 10) - 1;
+      const d = parseInt(onlyDateMatch[3], 10);
+      return new Date(y, m, d);
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date();
+    return d;
+  };
+
+  const fetchFinancialData = useCallback(async (year) => {
+    try {
+      const start_date = new Date(year, 0, 1).toISOString().split('T')[0];
+      const end_date = new Date(year, 11, 31).toISOString().split('T')[0];
+
+      // getEntries pode retornar diretamente um array ou um objeto { data: [...] } (ou mesmo com aninhamento)
+      const resp = await getEntries({
+        user_id: CURRENT_USER_ID,
+        start_date,
+        end_date,
+        // entry_type_id: 2 // pedimos despesas, mas garantimos filtro abaixo
+      });
+
+      let entries = resp;
+      if (!Array.isArray(entries)) {
+        entries = entries?.data ?? entries;
+        if (!Array.isArray(entries) && entries?.data) entries = entries.data;
+      }
+      entries = Array.isArray(entries) ? entries : [];
+
+      // Agora trazemos todos os tipos (receitas e despesas).
+      // entry_type_id: 1 = receita, 2 = despesa
+
+      const yearData = buildEmptyYear();
+
+      entries.forEach((e) => {
+        const d = parseDateSafe(e.entry_date);
+        if (isNaN(d.getTime())) return;
+        const monthKey = months[d.getMonth()];
+        const value = Number(parseFloat(e.value ?? e.amount ?? 0) || 0);
+        const category = e.category_name || e.category || 'Outros';
+        const title = e.title || category || 'Sem título';
+        const day = String(d.getDate()).padStart(2, '0');
+        const description = e.description || ''
+        // armazena a entry com title (solicitado) e tipo
+        const entryObj = {
+          titulo: title,
+          categoria: category,
+          valor: value,
+          data: `${day}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+          type: Number(e.entry_type_id),
+          descricao: description
+        };
+        yearData[monthKey].gastos.push(entryObj);
+
+        if (Number(e.entry_type_id) === 2) {
+          // despesa
+          yearData[monthKey].total += value;
+        } else if (Number(e.entry_type_id) === 1) {
+          // receita
+          yearData[monthKey].receitasTotal += value;
+        }
+      });
+
+      setFinancialData((prev) => ({ ...prev, [year]: yearData }));
+    } catch (err) {
+      // Se a API retornar 404 (nenhuma entry no intervalo), tratar como vazio sem exibir erro.
+      const status = err?.response?.status;
+      if (status === 404) {
+        setFinancialData((prev) => ({ ...prev, [year]: buildEmptyYear() }));
+        return;
+      }
+      // Para outros erros, logue para debug e também popula com estrutura vazia
+      console.error('Erro ao buscar entries:', err);
+      setFinancialData((prev) => ({ ...prev, [year]: buildEmptyYear() }));
+    }
+  }, [buildEmptyYear]);
+
+  useEffect(() => {
+    // carrega dados do ano inicial e mantém ao trocar selectedYear
+    fetchFinancialData(selectedYear);
+  }, [selectedYear, fetchFinancialData]);
+
   const getMonthData = (month) => {
-    return financialData[selectedYear]?.[month] || { total: 0, gastos: [] };
+    return (financialData[selectedYear] && financialData[selectedYear][month]) || { total: 0, gastos: [] };
   };
 
   const getTotalYear = () => {
     const yearData = financialData[selectedYear] || {};
-    return Object.values(yearData).reduce((sum, month) => sum + month.total, 0);
+    return Object.values(yearData).reduce((sum, month) => sum + (month.total || 0), 0);
   };
 
   const handleAIQuestion = () => {
@@ -212,6 +241,32 @@ const RELATORIO = ({ navigation }) => {
     setAiResponse(response);
   };
 
+  // carrega categorias da API
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await getCategories();
+        if (!mounted) return;
+        // espera-se que cada item tenha id, name/title e eventualmente color
+        setCategories(Array.isArray(data) ? data : (data?.data ?? []));
+      } catch (err) {
+        console.error('Erro ao carregar categorias:', err);
+        setCategories([]); // fallback
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // helper: converte "DD/MM/YYYY" -> "YYYY-MM-DD"
+  const formatDateForApi = (ddmmyyyy) => {
+    if (!ddmmyyyy) return new Date().toISOString().split('T')[0];
+    const parts = ddmmyyyy.split('/');
+    if (parts.length !== 3) return new Date().toISOString().split('T')[0];
+    const [d, m, y] = parts;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  };
+
   const handleManualExpenseSubmit = () => {
     if (!manualExpense.description || !manualExpense.amount) {
       Alert.alert('Erro', 'Por favor, preencha pelo menos a descrição e o valor');
@@ -224,47 +279,58 @@ const RELATORIO = ({ navigation }) => {
       return;
     }
 
-    // Aqui você salvaria o gasto no seu sistema de dados
-    Alert.alert(
-      'Gasto Adicionado!',
-      `Gasto de R$ ${amount.toFixed(2)} foi adicionado com sucesso.`,
-      [
-        {
-          text: 'Adicionar Outro',
-          onPress: () => {
-            setManualExpense({
-              description: '',
-              amount: '',
-              category: 'Alimentação',
-              date: new Date().toLocaleDateString('pt-BR'),
-              merchant: ''
-            });
-          },
-        },
-        {
-          text: 'Concluir',
-          onPress: () => {
-            setShowManualEntry(false);
-            setManualExpense({
-              description: '',
-              amount: '',
-              category: 'Alimentação',
-              date: new Date().toLocaleDateString('pt-BR'),
-              merchant: ''
-            });
-          },
-        },
-      ]
-    );
+    // valida categoria selecionada
+    if (!manualExpense.category_id) {
+      Alert.alert('Erro', 'Selecione uma categoria');
+      return;
+    }
+
+    (async () => {
+      try {
+        // utiliza data completa (DD/MM/YYYY) do campo date
+        const entryDate = formatDateForApi(manualExpense.date);
+        const cat = categories.find(c => c.id === manualExpense.category_id);
+        const categoryName = cat?.name ?? cat?.title ?? 'Categoria';
+        const tipo = Number(manualExpense.entry_type_id) === 2 ? 'despesa' : 'receita';
+        const title = `Lançamento manual de ${tipo}`;
+
+        await createEntry({
+          title,
+          entry_date: entryDate,
+          description: manualExpense.description || '',
+          value: amount,
+          entry_type_id: Number(manualExpense.entry_type_id),
+          category_id: manualExpense.category_id,
+          user_id: CURRENT_USER_ID
+        }, CURRENT_USER_ID);
+
+        // atualiza dados do relatório para o ano selecionado
+        await fetchFinancialData(selectedYear);
+
+        Alert.alert('Sucesso', `Lançamento salvo: R$ ${amount.toFixed(2)}`);
+        // reset form e fecha modal
+        setShowManualEntry(false);
+        setManualExpense({
+          description: '',
+          amount: '',
+          category_id: null,
+          entry_type_id: 2,
+          date: new Date().toLocaleDateString('pt-BR'),
+        });
+      } catch (err) {
+        console.error('Erro ao criar entry:', err);
+        Alert.alert('Erro', 'Não foi possível salvar o lançamento. Tente novamente.');
+      }
+    })();
   };
 
   const resetManualForm = () => {
     setManualExpense({
       description: '',
       amount: '',
-      category: 'Alimentação',
+      category_id: null,
+      entry_type_id: 2,
       date: new Date().toLocaleDateString('pt-BR'),
-      merchant: ''
     });
   };
 
@@ -282,8 +348,9 @@ const RELATORIO = ({ navigation }) => {
           <Text style={styles.monthName}>{month.toUpperCase()}</Text>
           <Text style={styles.monthNumber}>{monthNumber}</Text>
         </View>
-        <Text style={styles.monthTotal}>R$ {monthData.total.toFixed(2)}</Text>
-        <Text style={styles.monthGastos}>{monthData.gastos.length} gastos</Text>
+        <Text style={styles.monthTotal}>Despesas: {'\n'}R$ {monthData.total.toFixed(2)}</Text>
+        <Text style={[styles.monthGastos, { marginTop: 4 }]}>Receitas: R$ {(monthData.receitasTotal || 0).toFixed(2)}</Text>
+        <Text style={styles.monthGastos}>{monthData.gastos.length} lançamentos</Text>
       </TouchableOpacity>
     );
   };
@@ -333,7 +400,7 @@ const RELATORIO = ({ navigation }) => {
         }}
       >
         <TouchableOpacity
-        onPress={()=> setShowAIModal(!showAIModal)}
+          onPress={() => setShowAIModal(!showAIModal)}
           style={{
             width: 60,
             height: 60,
@@ -383,15 +450,23 @@ const RELATORIO = ({ navigation }) => {
               <Text style={styles.addExpenseText}>Adicionar Novo Gasto</Text>
             </TouchableOpacity>
 
-            {getMonthData(selectedMonth).gastos.map((gasto, index) => (
-              <View key={index} style={styles.gastoItem}>
-                <View style={styles.gastoInfo}>
-                  <Text style={styles.gastoCategoria}>{gasto.categoria}</Text>
-                  <Text style={styles.gastoData}>{gasto.data}/{selectedYear}</Text>
+            {getMonthData(selectedMonth).gastos.map((gasto, index) => {
+              const isDespesa = Number(gasto.type) === 2;
+              const valueColor = isDespesa ? '#FF6B6B' : '#00C851';
+              return (
+                <View key={index} style={styles.gastoItem}>
+                  <View style={styles.gastoInfo}>
+                    {/* mostra o título e abaixo se é Despesa/Receita */}
+                    <Text style={styles.gastoCategoria}>{gasto.titulo || gasto.categoria}</Text>
+                    <Text style={{ color: 'white' }}>Categoria: {gasto.categoria}</Text>
+                    <Text style={[styles.gastoTipo, { color: valueColor }]}>{isDespesa ? 'Despesa' : 'Receita'}</Text>
+                    <Text style={styles.gastoData}>{gasto.data}/{selectedYear}</Text>
+                    <Text style={{ color: 'white' }}>{gasto.descricao}</Text>
+                  </View>
+                  <Text style={[styles.gastoValor, { color: valueColor }]}>R$ {gasto.valor.toFixed(2)}</Text>
                 </View>
-                <Text style={styles.gastoValor}>R$ {gasto.valor.toFixed(2)}</Text>
-              </View>
-            ))}
+              )
+            })}
           </ScrollView>
 
         </SafeAreaView>
@@ -549,63 +624,79 @@ const RELATORIO = ({ navigation }) => {
             </View>
 
             <View style={styles.manualFormGroup}>
-              <Text style={styles.manualFormLabel}>Estabelecimento</Text>
-              <TextInput
-                style={styles.manualFormInput}
-                value={manualExpense.merchant}
-                onChangeText={(text) => setManualExpense({ ...manualExpense, merchant: text })}
-                placeholder="Ex: Supermercado ABC"
-                placeholderTextColor="#666"
-                maxLength={50}
-              />
-            </View>
-
-            <View style={styles.manualFormGroup}>
               <Text style={styles.manualFormLabel}>Data</Text>
               <TextInput
                 style={styles.manualFormInput}
                 value={manualExpense.date}
                 onChangeText={(text) => setManualExpense({ ...manualExpense, date: text })}
-                placeholder="DD/MM/AAAA"
+                placeholder="DD/MM/YYYY"
                 placeholderTextColor="#666"
+                maxLength={10}
               />
+            </View>
+
+            {/* seleção de tipo (Despesa / Receita) */}
+            <View style={styles.manualFormGroup}>
+              <Text style={styles.manualFormLabel}>Tipo de lançamento</Text>
+              <View style={styles.typeRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.typeButton,
+                    manualExpense.entry_type_id === 2 && styles.typeButtonActiveExpense
+                  ]}
+                  onPress={() => setManualExpense({ ...manualExpense, entry_type_id: 2 })}
+                >
+                  <Text style={manualExpense.entry_type_id === 2 ? styles.typeTextActive : styles.typeText}>Despesa</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.typeButton,
+                    manualExpense.entry_type_id === 1 && styles.typeButtonActiveIncome
+                  ]}
+                  onPress={() => setManualExpense({ ...manualExpense, entry_type_id: 1 })}
+                >
+                  <Text style={manualExpense.entry_type_id === 1 ? styles.typeTextActive : styles.typeText}>Receita</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.manualFormGroup}>
               <Text style={styles.manualFormLabel}>Categoria</Text>
               <View style={styles.categoryGrid}>
-                {[
-                  { key: 'Alimentação', icon: 'restaurant', color: '#FF6B6B' },
-                  { key: 'Transporte', icon: 'car', color: '#4ECDC4' },
-                  { key: 'Entretenimento', icon: 'game-controller', color: '#45B7D1' },
-                  { key: 'Saúde', icon: 'medical', color: '#96CEB4' },
-                  { key: 'Educação', icon: 'school', color: '#FECA57' },
-                  { key: 'Casa', icon: 'home', color: '#FF9FF3' },
-                  { key: 'Roupas', icon: 'shirt', color: '#54A0FF' },
-                  { key: 'Outros', icon: 'ellipsis-horizontal', color: '#5F27CD' },
-                ].map((cat) => (
-                  <TouchableOpacity
-                    key={cat.key}
-                    style={[
-                      styles.categoryCard,
-                      { borderColor: manualExpense.category === cat.key ? cat.color : '#333333' },
-                      manualExpense.category === cat.key && { backgroundColor: cat.color + '20' }
-                    ]}
-                    onPress={() => setManualExpense({ ...manualExpense, category: cat.key })}
-                  >
-                    <Ionicons
-                      name={cat.icon}
-                      size={24}
-                      color={manualExpense.category === cat.key ? cat.color : '#666'}
-                    />
-                    <Text style={[
-                      styles.categoryCardText,
-                      { color: manualExpense.category === cat.key ? cat.color : '#666' }
-                    ]}>
-                      {cat.key}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {(categories.length > 0 ? categories : [
+                  { id: 'alimentacao', name: 'Alimentação', color: '#FF6B6B' },
+                  { id: 'transporte', name: 'Transporte', color: '#4ECDC4' },
+                  { id: 'outros', name: 'Outros', color: '#5F27CD' },
+                  { id: 'entretenimento', name: 'Entretenimento', color: '#5F27CD' },
+                  { id: 'roupas', name: 'Roupas', color: '#5F27CD' },
+                  { id: 'educacao', name: 'Educação', color: '#5F27CD' }
+                ]).map((cat) => {
+                  // garante string e fallback de cor
+                  const rawColor = (cat.color ?? cat.hex ?? cat.color_code ?? '#00C851').toString();
+                  const catColor = rawColor.startsWith('#') ? rawColor : (`#${rawColor.replace(/^#*/, '')}`);
+                  const selected = String(manualExpense.category_id) === String(cat.id);
+                  const bgColor = selected ? hexToRgba(catColor, 0.12) : '#2a2a2a';
+                  const borderColor = selected ? catColor : '#333333';
+                  const textColor = selected ? getContrastingTextColor(catColor) : '#666';
+                  const iconName = ICON_BY_CATEGORY[cat.name] || ICON_BY_CATEGORY[cat.title] || 'pricetag';
+
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryCard,
+                        { borderColor: borderColor, backgroundColor: bgColor }
+                      ]}
+                      onPress={() => setManualExpense({ ...manualExpense, category_id: cat.id })}
+                    >
+                      <Ionicons name={iconName} size={28} color={catColor} />
+                      <Text style={[styles.categoryCardText, { color: textColor }]}>
+                        {cat.name ?? cat.title ?? cat.key}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
@@ -805,6 +896,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#00C851',
   },
   addExpenseText: {
     color: '#fff',
@@ -832,12 +925,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 5,
   },
+  gastoTipo: {
+    color: '#999',
+    fontSize: 12,
+    marginBottom: 6,
+    textTransform: 'capitalize'
+  },
   gastoData: {
     color: '#999',
     fontSize: 12,
   },
   gastoValor: {
-    color: '#00C851',
+    color: '#00C851', // default, sobrescrito inline para despesa/receita
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -906,23 +1005,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     lineHeight: 20,
-  },
-  addExpenseButton: {
-    backgroundColor: '#00C851',
-    borderRadius: 12,
-    padding: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#00C851',
-  },
-  addExpenseText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 10,
   },
   optionsModalOverlay: {
     flex: 1,
@@ -1058,6 +1140,37 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  typeRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    gap: 10, // se sua versão RN não suportar 'gap', pode usar marginRight nos botões
+  },
+  typeButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333333',
+    backgroundColor: '#2a2a2a',
+  },
+  typeButtonActiveExpense: {
+    backgroundColor: '#FF6B6B',
+    borderColor: '#FF6B6B',
+  },
+  typeButtonActiveIncome: {
+    backgroundColor: '#00C851',
+    borderColor: '#00C851',
+  },
+  typeText: {
+    color: '#ccc',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  typeTextActive: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
 
