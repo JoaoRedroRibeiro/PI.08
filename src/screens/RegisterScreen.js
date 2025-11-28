@@ -13,6 +13,33 @@ import {
   StatusBar,
   Image,
 } from 'react-native';
+import { createUser } from '../core/util/update-user';
+
+// helpers para mascaras simples
+const formatPhone = (raw) => {
+  if (!raw) return '';
+  const d = raw.replace(/\D/g, '').slice(0, 11); // limita 11 dígitos (DDD + 9)
+  if (d.length <= 2) return `(${d}`;
+  if (d.length <= 6) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  // 11 dígitos -> (99) 99999-9999
+  return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+};
+
+const formatEmail = (raw) => {
+  if (!raw && raw !== '') return '';
+  // remove espaços e força lowercase
+  return raw.replace(/\s+/g, '').toLowerCase();
+};
+
+// novo helper: formata data para DD/MM/YYYY enquanto digita
+const formatDate = (raw) => {
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '').slice(0, 8); // DDMMYYYY
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0,2)}/${digits.slice(2)}`;
+  return `${digits.slice(0,2)}/${digits.slice(2,4)}/${digits.slice(4,8)}`;
+};
 
 const RegisterScreen = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -20,9 +47,17 @@ const RegisterScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const handleRegister = () => {
+  // novos campos
+  const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState(''); // DD/MM/YYYY
+  const [profession, setProfession] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos');
+      Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
@@ -36,12 +71,34 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    Alert.alert('Sucesso', 'Cadastro realizado com sucesso!', [
-      {
-        text: 'OK',
-        onPress: () => navigation.navigate('Login'),
-      },
-    ]);
+    // validação básica de birthDate (opcional)
+    if (birthDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(birthDate)) {
+      Alert.alert('Erro', 'Data de nascimento inválida. Use DD/MM/YYYY');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createUser({
+        email,
+        full_name: name,
+        phone_number: phone,
+        birthdate: birthDate,
+        profession,
+        address,
+        city,
+        password
+      });
+
+      setLoading(false);
+      Alert.alert('Sucesso', 'Cadastro realizado com sucesso!', [
+        { text: 'OK', onPress: () => navigation.navigate('Login') }
+      ]);
+    } catch (err) {
+      setLoading(false);
+      const msg = err?.response?.data?.message || err?.message || 'Erro ao criar usuário';
+      Alert.alert('Erro', msg.toString());
+    }
   };
 
   const goToLogin = () => {
@@ -50,7 +107,7 @@ const RegisterScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView 
           style={styles.keyboardAvoidingView}
@@ -62,20 +119,12 @@ const RegisterScreen = ({ navigation }) => {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.imageContainer}>
-              <Image 
-                source={require('./imagemlogo.jpeg')} 
-                style={styles.logo}
-                resizeMode="contain"
-              />
-              <Text style={styles.appName}>Controle Financeiro</Text>
-            </View>
-
             <View style={styles.registerContainer}>
               <Text style={styles.title}>Criar Conta</Text>
               <Text style={styles.subtitle}>Preencha os dados para se cadastrar</Text>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Nome completo</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Nome completo"
@@ -87,11 +136,12 @@ const RegisterScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Email</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Email"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(t) => setEmail(formatEmail(t))}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -99,6 +149,7 @@ const RegisterScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Senha (mínimo 6 caracteres)</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Senha (mínimo 6 caracteres)"
@@ -110,6 +161,7 @@ const RegisterScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Confirmar senha</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Confirmar senha"
@@ -120,8 +172,61 @@ const RegisterScreen = ({ navigation }) => {
                 />
               </View>
 
-              <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-                <Text style={styles.registerButtonText}>Cadastrar</Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Telefone</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="(00) 91234-5678"
+                  value={phone}
+                  onChangeText={(t) => setPhone(formatPhone(t))}
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Data de nascimento</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="DD/MM/YYYY"
+                  value={birthDate}
+                  onChangeText={(t) => setBirthDate(formatDate(t))}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Profissão</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Profissão"
+                  value={profession}
+                  onChangeText={setProfession}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Endereço</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Endereço"
+                  value={address}
+                  onChangeText={setAddress}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Cidade</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Cidade"
+                  value={city}
+                  onChangeText={setCity}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.registerButton} onPress={handleRegister} disabled={loading}>
+                <Text style={styles.registerButtonText}>{loading ? 'Salvando...' : 'Cadastrar'}</Text>
               </TouchableOpacity>
 
               <View style={styles.loginContainer}>
@@ -141,7 +246,7 @@ const RegisterScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // Preto principal
+    backgroundColor: '#f5f5f5',
   },
   safeArea: {
     flex: 1,
@@ -160,23 +265,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 50,
     paddingBottom: 30,
-    minHeight: 180,
+    minHeight: 150,
   },
-  logo: {
-    width: 140,
-    height: 140,
-    marginBottom: 15,
-    borderRadius: 70,
+  imagePlaceholder: {
+    width: 120,
+    height: 120,
+    backgroundColor: '#e1e1e1',
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ccc',
+    borderStyle: 'dashed',
   },
-  appName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#ffffff',
+  imagePlaceholderText: {
+    color: '#999',
     textAlign: 'center',
-    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '500',
   },
   registerContainer: {
-    backgroundColor: '#1a1a1a', // Preto mais claro
+    backgroundColor: 'white',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
     paddingHorizontal: 30,
@@ -190,55 +299,49 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.1,
     shadowRadius: 3.84,
-    borderTopWidth: 2,
-    borderTopColor: '#00C851', // Verde para detalhes
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#333',
     textAlign: 'center',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#cccccc',
+    color: '#666',
     textAlign: 'center',
     marginBottom: 30,
+  },
+  labelText: {
+    color: '#333',
+    marginBottom: 6,
+    fontWeight: '600',
   },
   inputContainer: {
     marginBottom: 20,
   },
   input: {
-    backgroundColor: '#2a2a2a',
+    backgroundColor: '#f8f8f8',
     borderRadius: 12,
     paddingHorizontal: 20,
     paddingVertical: 15,
     fontSize: 16,
-    borderWidth: 2,
-    borderColor: '#333333',
-    color: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
   },
   registerButton: {
-    backgroundColor: '#00C851', // Verde principal
+    backgroundColor: '#28a745',
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 10,
     marginBottom: 30,
-    elevation: 3,
-    shadowColor: '#00C851',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
   },
   registerButtonText: {
-    color: '#000000',
+    color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   loginContainer: {
     flexDirection: 'row',
@@ -246,11 +349,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loginText: {
-    color: '#cccccc',
+    color: '#666',
     fontSize: 14,
   },
   loginLink: {
-    color: '#00C851',
+    color: '#007AFF',
     fontSize: 14,
     fontWeight: '600',
   },

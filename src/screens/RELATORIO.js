@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,9 @@ import {
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getEntries, createEntry } from '../core/util/entries';
+import { getEntries, createEntry, updateEntry } from '../core/util/entries';
 import { getCategories } from '../core/util/categories';
+import { AuthContext } from '../core/context/auth'
 
 const { width, height } = Dimensions.get('window');
 const CURRENT_USER = 1
@@ -35,6 +36,8 @@ const RELATORIO = ({ navigation }) => {
     entry_type_id: 2, // 2 = despesa (default)
     date: new Date().toLocaleDateString('pt-BR'),
   });
+  const [categories, setCategories] = useState([]); // categorias da API
+  const [editingEntryId, setEditingEntryId] = useState(null); // id da entry em edição
 
   // Gerar anos dinamicamente baseado no ano atual
   const currentYear = new Date().getFullYear();
@@ -42,8 +45,7 @@ const RELATORIO = ({ navigation }) => {
 
   // financialData agora é carregado dinamicamente via getEntries
   const [financialData, setFinancialData] = useState({});
-  const [categories, setCategories] = useState([]); // categorias da API
-  const CURRENT_USER_ID = 1; // ajustar conforme autenticação real
+  const { user } = useContext(AuthContext)
 
   // Mapeamento local de nomes de categoria -> ícone Ionicons
   // Ajuste os nomes conforme suas categorias reais
@@ -130,7 +132,7 @@ const RELATORIO = ({ navigation }) => {
 
       // getEntries pode retornar diretamente um array ou um objeto { data: [...] } (ou mesmo com aninhamento)
       const resp = await getEntries({
-        user_id: CURRENT_USER_ID,
+        user_id: user,
         start_date,
         end_date,
         // entry_type_id: 2 // pedimos despesas, mas garantimos filtro abaixo
@@ -157,14 +159,18 @@ const RELATORIO = ({ navigation }) => {
         const title = e.title || category || 'Sem título';
         const day = String(d.getDate()).padStart(2, '0');
         const description = e.description || ''
-        // armazena a entry com title (solicitado) e tipo
+        // armazena a entry com title (solicitado) e tipo, mantendo id e entry_date original
         const entryObj = {
+          id: e.id,
           titulo: title,
           categoria: category,
           valor: value,
           data: `${day}/${String(d.getMonth() + 1).padStart(2, '0')}`,
           type: Number(e.entry_type_id),
-          descricao: description
+          entry_type_id: Number(e.entry_type_id),
+          category_id: e.category_id ?? null,
+          descricao: description,
+          entry_date_raw: e.entry_date
         };
         yearData[monthKey].gastos.push(entryObj);
 
@@ -264,7 +270,7 @@ const RELATORIO = ({ navigation }) => {
     const parts = ddmmyyyy.split('/');
     if (parts.length !== 3) return new Date().toISOString().split('T')[0];
     const [d, m, y] = parts;
-    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   };
 
   const handleManualExpenseSubmit = () => {
@@ -294,15 +300,28 @@ const RELATORIO = ({ navigation }) => {
         const tipo = Number(manualExpense.entry_type_id) === 2 ? 'despesa' : 'receita';
         const title = `Lançamento manual de ${tipo}`;
 
-        await createEntry({
-          title,
-          entry_date: entryDate,
-          description: manualExpense.description || '',
-          value: amount,
-          entry_type_id: Number(manualExpense.entry_type_id),
-          category_id: manualExpense.category_id,
-          user_id: CURRENT_USER_ID
-        }, CURRENT_USER_ID);
+        // Se estiver editando, atualiza; caso contrário cria novo
+        if (editingEntryId) {
+          await updateEntry({
+            title,
+            entry_date: entryDate,
+            description: manualExpense.description || '',
+            value: amount,
+            entry_type_id: Number(manualExpense.entry_type_id),
+            category_id: manualExpense.category_id,
+            user_id: user
+          }, editingEntryId);
+        } else {
+          await createEntry({
+            title,
+            entry_date: entryDate,
+            description: manualExpense.description || '',
+            value: amount,
+            entry_type_id: Number(manualExpense.entry_type_id),
+            category_id: manualExpense.category_id,
+            user_id: user
+          }, user);
+        }
 
         // atualiza dados do relatório para o ano selecionado
         await fetchFinancialData(selectedYear);
@@ -317,6 +336,7 @@ const RELATORIO = ({ navigation }) => {
           entry_type_id: 2,
           date: new Date().toLocaleDateString('pt-BR'),
         });
+        setEditingEntryId(null);
       } catch (err) {
         console.error('Erro ao criar entry:', err);
         Alert.alert('Erro', 'Não foi possível salvar o lançamento. Tente novamente.');
@@ -332,6 +352,7 @@ const RELATORIO = ({ navigation }) => {
       entry_type_id: 2,
       date: new Date().toLocaleDateString('pt-BR'),
     });
+    setEditingEntryId(null);
   };
 
   const renderMonthCard = (month, index) => {
@@ -453,18 +474,34 @@ const RELATORIO = ({ navigation }) => {
             {getMonthData(selectedMonth).gastos.map((gasto, index) => {
               const isDespesa = Number(gasto.type) === 2;
               const valueColor = isDespesa ? '#FF6B6B' : '#00C851';
+              // ao tocar, abre modal de edição com dados preenchidos
+              const handleEdit = () => {
+                // preenche manualExpense com os dados da entry
+                const rawDate = gasto.entry_date_raw;
+                const d = parseDateSafe(rawDate || `${selectedYear}-${String(months.indexOf(selectedMonth) + 1).padStart(2, '0')}-${gasto.data.split('/')[0]}`);
+                const formDate = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                setManualExpense({
+                  description: gasto.descricao || gasto.titulo || '',
+                  amount: gasto.valor?.toString() ?? '',
+                  category_id: gasto.category_id ?? null,
+                  entry_type_id: gasto.entry_type_id ?? gasto.type ?? 2,
+                  date: formDate,
+                });
+                setEditingEntryId(gasto.id ?? null);
+                setShowManualEntry(true);
+              };
+
               return (
-                <View key={index} style={styles.gastoItem}>
+                <TouchableOpacity key={index} style={styles.gastoItem} onPress={handleEdit}>
                   <View style={styles.gastoInfo}>
-                    {/* mostra o título e abaixo se é Despesa/Receita */}
                     <Text style={styles.gastoCategoria}>{gasto.titulo || gasto.categoria}</Text>
-                    <Text style={{ color: 'white' }}>Categoria: {gasto.categoria}</Text>
+                    <Text style={{ color: '#999', fontSize: 12 }}>Categoria: {gasto.categoria}</Text>
                     <Text style={[styles.gastoTipo, { color: valueColor }]}>{isDespesa ? 'Despesa' : 'Receita'}</Text>
                     <Text style={styles.gastoData}>{gasto.data}/{selectedYear}</Text>
-                    <Text style={{ color: 'white' }}>{gasto.descricao}</Text>
+                    {gasto.descricao ? <Text style={{ color: '#ccc', marginTop: 6 }}>{gasto.descricao}</Text> : null}
                   </View>
                   <Text style={[styles.gastoValor, { color: valueColor }]}>R$ {gasto.valor.toFixed(2)}</Text>
-                </View>
+                </TouchableOpacity>
               )
             })}
           </ScrollView>
@@ -1013,7 +1050,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   optionsModal: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#1a1a2a',
     borderRadius: 15,
     padding: 20,
     width: width * 0.9,

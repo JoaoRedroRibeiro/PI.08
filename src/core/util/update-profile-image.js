@@ -10,7 +10,7 @@ export async function updateProfileImage(userId, image) {
         name: 'profile.jpeg'
     })
 
-    await api.patch(`/users/${userId}/profile_image`, formData, {
+    await api.patch(`/users/${userId}/profile_image/`, formData, {
         headers: {
             "Content-Type": 'multipart/form-data'
         }

@@ -5,7 +5,7 @@ import { api } from '../api'
  * @param {{month: number, year: number, value: number, user_id: number, category_id: number}} params 
  */
 export async function createGoal(params) {
-    const { data } = await api.post('/goals', {
+    const { data } = await api.post('/goals/', {
         "month": params.month,
         "year": params.year,
         "value": params.value,
@@ -33,7 +33,7 @@ export async function getGoals(params) {
   if (params.final_year)      searchParams.set("final_year", params.final_year);
   if (params.category_id)     searchParams.set("category_id", params.category_id);
 
-  const { data } = await api.get(`/goals?${searchParams.toString()}`);
+  const { data } = await api.get(`/goals/?${searchParams.toString()}`);
   return data;
 }
 

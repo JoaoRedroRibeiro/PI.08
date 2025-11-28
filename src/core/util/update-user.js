@@ -15,3 +15,41 @@ export async function updateProfile(userId, userData) {
 
     return response.data
 }
+
+export async function createUser(params) {
+    // params deve conter:
+    // {
+    //   email, full_name, phone_number, birthdate (DD/MM/YYYY ou YYYY-MM-DD), profession, address, city, password
+    // }
+    const {
+      email,
+      full_name,
+      phone_number,
+      birthdate,
+      profession,
+      address,
+      city,
+      password
+    } = params;
+
+    // normaliza birthdate para YYYY-MM-DD
+    let bd = birthdate || '';
+    if (bd.includes('/')) {
+      const [d, m, y] = bd.split('/');
+      if (d && m && y) bd = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
+
+    const payload = {
+      email,
+      full_name,
+      phone_number,
+      birthdate: bd || null,
+      profession,
+      address,
+      city,
+      password
+    };
+
+    const response = await api.post('/users', payload);
+    return response.data;
+}

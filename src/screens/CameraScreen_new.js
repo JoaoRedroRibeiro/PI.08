@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { uploadReceiptImage } from '../core/util/receipts';
 
 const CameraScreen = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
@@ -24,8 +26,15 @@ const CameraScreen = ({ navigation }) => {
       if (!permission) {
         await requestPermission();
       }
+      // pede permissão de biblioteca (para salvar/abrir galeria)
       const mediaStatus = await MediaLibrary.requestPermissionsAsync();
       setHasMediaPermission(mediaStatus.status === 'granted');
+      // ImagePicker também pode requerer permissão separada em algumas plataformas
+      const pickerStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (pickerStatus.status !== 'granted') {
+        // não bloqueia, apenas informa
+        console.warn('Permissão de galeria não concedida');
+      }
     })();
   }, []);
 
@@ -45,27 +54,69 @@ const CameraScreen = ({ navigation }) => {
   }
 
   const takePicture = async () => {
-    if (cameraRef) {
+  if (cameraRef) {
+    try {
       const photo = await cameraRef.takePictureAsync({ quality: 0.8 });
       setCapturedPhoto(photo.uri);
-      setIsProcessingModalVisible(true);
-      // Aqui você pode enviar a imagem para o backend se quiser
-      setTimeout(() => {
-        setIsProcessingModalVisible(false);
-      }, 2000);
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Erro', 'Falha ao tirar foto.');
     }
-  };
+  }
+};
 
-  const saveTransaction = async () => {
-    try {
-      await MediaLibrary.saveToLibraryAsync(capturedPhoto);
-      Alert.alert('Sucesso', 'Transação salva com sucesso!');
-      setCapturedPhoto(null);
-      navigation.navigate('Estatísticas');
-    } catch (error) {
-      Alert.alert('Erro', 'Falha ao salvar a transação.');
+const pickImageFromGallery = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: false,
+    });
+
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setCapturedPhoto(uri);
+
+      setIsProcessingModalVisible(true);
+
+      try {
+        await uploadReceiptImage(uri);
+        setIsProcessingModalVisible(false);
+        Alert.alert('Sucesso', 'Imagem enviada com sucesso.');
+        setCapturedPhoto(null);
+        navigation.navigate('Estatísticas');
+      } catch (err) {
+        console.error('Erro upload:', JSON.stringify(err));
+        setIsProcessingModalVisible(false);
+        Alert.alert('Erro', 'Falha ao enviar imagem. Tente novamente.');
+      }
     }
-  };
+  } catch (err) {
+    console.error(err);
+    Alert.alert('Erro', 'Falha ao acessar a galeria.');
+  }
+};
+
+const handleUpload = async () => {
+  if (!capturedPhoto) {
+    Alert.alert('Nenhuma imagem', 'Tire uma foto ou escolha uma da galeria antes de enviar.');
+    return;
+  }
+
+  setIsProcessingModalVisible(true);
+
+  try {
+    await uploadReceiptImage(capturedPhoto);
+    setIsProcessingModalVisible(false);
+    Alert.alert('Sucesso', 'Imagem enviada com sucesso.');
+    setCapturedPhoto(null);
+    navigation.navigate('Estatísticas');
+  } catch (err) {
+    console.error('Erro upload:', err);
+    setIsProcessingModalVisible(false);
+    Alert.alert('Erro', 'Falha ao enviar imagem. Tente novamente.');
+  }
+};
 
   return (
     <View style={styles.container}>
@@ -75,9 +126,9 @@ const CameraScreen = ({ navigation }) => {
           <View style={styles.actionsContainer}>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: '#07cf18ff' }]}
-              onPress={saveTransaction}
+              onPress={handleUpload}
             >
-              <Text style={styles.actionText}>Salvar</Text>
+              <Text style={styles.actionText}>Enviar</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -95,8 +146,19 @@ const CameraScreen = ({ navigation }) => {
           style={styles.camera}
         >
           <View style={styles.buttonContainer}>
+
+            <TouchableOpacity style={styles.galleryButton} onPress={pickImageFromGallery}>
+              <Ionicons name="images" size={34} color="#fff" />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
               <Ionicons name="camera-outline" size={42} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.flipButton}
+              onPress={() => setFacing(facing === 'back' ? 'front' : 'back')}
+            >
+              <Ionicons name="camera-reverse" size={24} color="#fff" />
             </TouchableOpacity>
           </View>
         </CameraView>
@@ -150,7 +212,11 @@ const CameraScreen = ({ navigation }) => {
             <View style={styles.manualButtons}>
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: '#07cf18ff', marginRight: 8 }]}
-                onPress={saveTransaction}
+                onPress={() => {
+                  // ao salvar manualmente, podemos navegar para Estatísticas (comportamento simples)
+                  setIsManualEntryModalVisible(false);
+                  navigation.navigate('Estatísticas');
+                }}
               >
                 <Text style={styles.actionText}>Salvar</Text>
               </TouchableOpacity>
@@ -171,9 +237,10 @@ const CameraScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   camera: { flex: 1, justifyContent: 'flex-end' },
-  buttonContainer: { flexDirection: 'row', justifyContent: 'space-around', padding: 20 },
+  buttonContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', padding: 20 },
   flipButton: { backgroundColor: '#00000088', padding: 12, borderRadius: 50 },
   captureButton: { backgroundColor: '#07cf18ff', padding: 20, borderRadius: 50 },
+  galleryButton: { backgroundColor: '#00000066', padding: 14, borderRadius: 50 },
   previewContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   preview: { width: '100%', height: '80%', borderRadius: 12 },
   actionsContainer: { flexDirection: 'row', marginTop: 20 },

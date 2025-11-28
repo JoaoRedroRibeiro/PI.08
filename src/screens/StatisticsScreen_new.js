@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import {
   View,
   Text,
@@ -24,17 +24,17 @@ import { createGoal, getGoals, updateGoal, getGoalProgress } from '../core/util/
 import { getAnalysis } from '../core/util/analysis';
 import { getEntries } from '../core/util/entries';
 import { useFocusEffect } from '@react-navigation/native'
+import { AuthContext } from '../core/context/auth'
 
 const { width, height } = Dimensions.get('window');
 
 // Definições de ID de usuário e data atual simuladas para a API
-const CURRENT_USER_ID = 1; // ID de usuário fixo para teste
 const CURRENT_MONTH = new Date().getMonth() + 1; // Mês atual (Novembro, 1-12)
 const CURRENT_YEAR = new Date().getFullYear(); // Ano atual
 const MONTHS_PT = [
-      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ];
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
 
 const StatisticsScreen = ({ navigation }) => {
   const [selectedBarIndex, setSelectedBarIndex] = useState(null);
@@ -51,6 +51,7 @@ const StatisticsScreen = ({ navigation }) => {
   const [currentMonthExp, setCurrentMonthExp] = useState(0)
   const [goals, setGoals] = useState([])
 
+  const { user } = useContext(AuthContext)
   // Dados dos gráficos - apenas visualização
   const monthlyData = [
     { month: 'Jan', amount: 850, status: 'good', transactions: 28, prediction: 820 },
@@ -102,7 +103,7 @@ const StatisticsScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       const { data } = await getGoals({
-        user_id: CURRENT_USER_ID,
+        user_id: user,
         initial_month: 1,
         initial_year: CURRENT_YEAR,
         final_month: 12,
@@ -140,8 +141,7 @@ const StatisticsScreen = ({ navigation }) => {
       }
 
       console.log(goals)
-    } catch (error) {
-      console.error('Erro ao buscar metas:', error);
+    } catch {
       // Mantém a meta padrão
     } finally {
       setIsLoading(false);
@@ -178,7 +178,7 @@ const StatisticsScreen = ({ navigation }) => {
 
   // reorganiza mapEntries para calcular cores com base na meta do mês (se existir)
   const mapEntries = (entriesList = [], goalsList = []) => {
-    
+
     // inicializa estrutura de meses com valores 0 e lista de entradas
     const months = MONTHS_PT.map((m, idx) => ({
       monthIndex: idx,
@@ -213,7 +213,7 @@ const StatisticsScreen = ({ navigation }) => {
         // prepara detalhes a partir das entradas reais do mês
         const entriesDetails = m.rawEntries.map((e) => {
           const d = new Date(e.entry_date);
-          const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+          const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
           const desc = e.description ? ` - ${e.description}` : '';
           return `${dateStr} — R$ ${e.value.toFixed(2)}${desc}`;
         });
@@ -259,7 +259,7 @@ const StatisticsScreen = ({ navigation }) => {
     try {
 
       const { data } = await getEntries({
-        user_id: CURRENT_USER_ID,
+        user_id: user,
         // Corrige índices de mês (0-11). antes usava 1 e 12 causando intervalo errado.
         start_date: new Date(CURRENT_YEAR, 0, 1).toISOString().split('T')[0],
         end_date: new Date(CURRENT_YEAR, 11, 31).toISOString().split('T')[0],
@@ -326,7 +326,7 @@ const StatisticsScreen = ({ navigation }) => {
           month: CURRENT_MONTH,
           year: CURRENT_YEAR,
           value: newGoal,
-          user_id: CURRENT_USER_ID,
+          user_id: user,
           category_id: null,
         }, currentGoalId);
         Alert.alert('Sucesso', `Meta mensal atualizada para R$ ${newGoal.toFixed(2)}.`);
@@ -336,7 +336,7 @@ const StatisticsScreen = ({ navigation }) => {
           month: CURRENT_MONTH,
           year: CURRENT_YEAR,
           value: newGoal,
-          user_id: CURRENT_USER_ID,
+          user_id: user,
           category_id: null,
         });
         setCurrentGoalId(newGoalResponse.id);
@@ -455,37 +455,37 @@ const StatisticsScreen = ({ navigation }) => {
     const currentMonthTotal = monthlyTotals[CURRENT_MONTH - 1] || 0;
     const goalProgress = monthlyGoal ? ((currentMonthTotal / monthlyGoal) * 100).toFixed(1) : '0.0';
     // console.log(rawEntries)
- 
-     return (
-       <View style={styles.summaryContainer}>
-         <TouchableOpacity
-           style={styles.summaryCard}
-           onPress={() => setShowGoalModal(true)}
-         >
-           <Text style={styles.summaryLabel}>Meta Mensal</Text>
-           <Text style={styles.summaryValue}>R$ {monthlyGoal.toFixed(0)}</Text>
-           <Text style={styles.summarySubtext}>Toque para alterar</Text>
-         </TouchableOpacity>
- 
-         <View style={styles.summaryCard}>
-           <Text style={styles.summaryLabel}>Mês Atual</Text>
-           <Text style={[styles.summaryValue, { color: currentMonthTotal > monthlyGoal ? '#FF6B6B' : '#00C851' }]}>
-             R$ {currentMonthTotal.toFixed(2)}
-           </Text>
-           <Text style={styles.summarySubtext}>{goalProgress}% da meta</Text>
-         </View>
- 
-         <View style={styles.summaryCard}>
-           <Text style={styles.summaryLabel}>Média Mensal</Text>
-           <Text style={styles.summaryValue}>R$ {averageSpent.toFixed(0)}</Text>
-           <Text style={styles.summarySubtext}>{monthsWithData} meses com dados</Text>
-         </View>
-       </View>
-     );
-   };
+
+    return (
+      <View style={styles.summaryContainer}>
+        <TouchableOpacity
+          style={styles.summaryCard}
+          onPress={() => setShowGoalModal(true)}
+        >
+          <Text style={styles.summaryLabel}>Meta Mensal</Text>
+          <Text style={styles.summaryValue}>R$ {monthlyGoal.toFixed(0)}</Text>
+          <Text style={styles.summarySubtext}>Toque para alterar</Text>
+        </TouchableOpacity>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Mês Atual</Text>
+          <Text style={[styles.summaryValue, { color: currentMonthTotal > monthlyGoal ? '#FF6B6B' : '#00C851' }]}>
+            R$ {currentMonthTotal.toFixed(2)}
+          </Text>
+          <Text style={styles.summarySubtext}>{goalProgress}% da meta</Text>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryLabel}>Média Mensal</Text>
+          <Text style={styles.summaryValue}>R$ {averageSpent.toFixed(0)}</Text>
+          <Text style={styles.summarySubtext}>{monthsWithData} meses com dados</Text>
+        </View>
+      </View>
+    );
+  };
 
   const maxWeekly = Math.max(...weeklyData.map(item => item.amount));
-  const maxComparison = Math.max(...comparisonData.map(item => item.amount));
+  const maxComparison = Math.max(...comparisonData.map((item) => item.amount));
   const maxAmount = Math.max(...monthlyData.map(item => item.amount));
 
   const MonthlyBarChart = () => (
@@ -644,7 +644,7 @@ const StatisticsScreen = ({ navigation }) => {
       // prepara detalhes e abre modal (usa o modal já existente)
       const details = (seg.entries || []).map(en => {
         const d = parseDateSafe(en.entry_date);
-        const dateStr = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+        const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
         const desc = en.description ? ` - ${en.description}` : '';
         return `• ${dateStr} — R$ ${parseFloat(en.value).toFixed(2)}${desc}`;
       });
@@ -663,7 +663,7 @@ const StatisticsScreen = ({ navigation }) => {
 
     return (
       <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Categorias - {MONTHS_PT ? MONTHS_PT[CURRENT_MONTH-1] : 'Mês Atual'}</Text>
+        <Text style={styles.chartTitle}>Categorias - {MONTHS_PT ? MONTHS_PT[CURRENT_MONTH - 1] : 'Mês Atual'}</Text>
         <View style={styles.categoryLegend}>
           {categoryData.map((item, index) => {
             const seg = segments.find(s => s.name === item.name);
@@ -712,7 +712,7 @@ const StatisticsScreen = ({ navigation }) => {
             alignItems: 'center',
             gap: 5
           }}>
-            <Text style={{color: 'white', fontSize: 20}}>Gastos Mensais {CURRENT_YEAR}</Text>
+            <Text style={{ color: 'white', fontSize: 20 }}>Gastos Mensais {CURRENT_YEAR}</Text>
             <BarChart
               data={entries}
               width={width * 0.9}       // garante que o gráfico ocupe só a tela
@@ -753,37 +753,42 @@ const StatisticsScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.modalBody}>
-                <Text style={styles.modalValue}>{selectedDetail?.value}</Text>
-                {selectedDetail?.status && (
-                  <Text style={[styles.modalStatus, { color: selectedDetail.color }]}>
-                    {selectedDetail.status}
-                  </Text>
-                )}
+                <ScrollView style={styles.modalBodyScroll} contentContainerStyle={styles.modalBodyContent}>
+                  {/* Cabeçalho do detalhe (mostra total/valor já preparado) */}
+                  <Text style={styles.modalValue}>{selectedDetail?.value}</Text>
+                  {selectedDetail?.status && (
+                    <Text style={[styles.modalStatus, { color: selectedDetail.color }]}>
+                      {selectedDetail.status}
+                    </Text>
+                  )}
 
-                
-                {selectedDetail?.status && (
-  <Text style={[styles.modalStatus, { color: selectedDetail.color }]}>
-    {selectedDetail.status}
-  </Text>
-)}
+                  {/* Se houver entries brutas, renderiza lista rolável detalhada */}
+                  {selectedDetail?.entries && selectedDetail.entries.length > 0 ? (
+                    selectedDetail.entries.map((en, idx) => {
+                      const d = parseDateSafe(en.entry_date);
+                      const dateStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                      const title = en.title || en.titulo || en.description || en.category_name || 'Sem título';
+                      const val = Number(parseFloat(en.value ?? en.amount ?? 0) || 0);
+                      const isDespesa = Number(en.entry_type_id ?? en.type ?? 2) === 2;
+                      const valueColor = isDespesa ? '#FF6B6B' : '#00C851';
 
-{selectedDetail?.entries && selectedDetail.entries.length > 0 ? (
-  selectedDetail.entries.map((en, idx) => {
-    const d = parseDateSafe(en.entry_date);
-    const dateStr = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
-    const desc = en.description ? ` - ${en.description}` : '';
-    return (
-      <Text key={`entry-${idx}`} style={styles.modalDetail}>
-        • {dateStr} — R$ {en.value.toFixed(2)}{desc}
-      </Text>
-    );
-  })
-) : (
-  selectedDetail?.details?.map((detail, index) => (
-    <Text key={index} style={styles.modalDetail}>• {detail}</Text>
-  ))
-)}
-
+                      return (
+                        <View key={`entry-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <View style={{ flex: 1, paddingRight: 10 }}>
+                            <Text style={{ color: '#fff', fontWeight: '600' }}>{title}</Text>
+                            <Text style={{ color: '#999', fontSize: 12 }}>{isDespesa ? 'Despesa' : 'Receita'} • {dateStr}</Text>
+                          </View>
+                          <Text style={{ color: valueColor, fontWeight: '700' }}>R$ {val.toFixed(2)}</Text>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    // fallback para detalhes em texto
+                    selectedDetail?.details?.map((detail, index) => (
+                      <Text key={index} style={styles.modalDetail}>• {detail}</Text>
+                    ))
+                  )}
+                </ScrollView>
               </View>
             </Animated.View>
           </View>
@@ -1157,6 +1162,13 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     paddingTop: 10,
+  },
+  modalBodyScroll: {
+    maxHeight: height * 0.55, // limita altura para permitir scroll dentro do modal
+    paddingTop: 10,
+  },
+  modalBodyContent: {
+    paddingBottom: 20,
   },
   modalValue: {
     fontSize: 24,

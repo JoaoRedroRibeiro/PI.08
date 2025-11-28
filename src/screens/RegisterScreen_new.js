@@ -12,6 +12,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
+import { createUser } from '../core/util/update-user';
 
 const RegisterScreen = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -19,9 +20,17 @@ const RegisterScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const handleRegister = () => {
+  // novos campos
+  const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState(''); // DD/MM/YYYY
+  const [profession, setProfession] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos');
+      Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
@@ -35,12 +44,34 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    Alert.alert('Sucesso', 'Cadastro realizado com sucesso!', [
-      {
-        text: 'OK',
-        onPress: () => navigation.navigate('Login'),
-      },
-    ]);
+    // validação básica de birthDate (opcional)
+    if (birthDate && !/^\d{2}\/\d{2}\/\d{4}$/.test(birthDate)) {
+      Alert.alert('Erro', 'Data de nascimento inválida. Use DD/MM/YYYY');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createUser({
+        email,
+        full_name: name,
+        phone_number: phone,
+        birthdate: birthDate,
+        profession,
+        address,
+        city,
+        password
+      });
+
+      setLoading(false);
+      Alert.alert('Sucesso', 'Cadastro realizado com sucesso!', [
+        { text: 'OK', onPress: () => navigation.navigate('Login') }
+      ]);
+    } catch (err) {
+      setLoading(false);
+      const msg = err?.response?.data?.message || err?.message || 'Erro ao criar usuário';
+      Alert.alert('Erro', msg.toString());
+    }
   };
 
   const goToLogin = () => {
@@ -74,6 +105,7 @@ const RegisterScreen = ({ navigation }) => {
               <Text style={styles.subtitle}>Preencha os dados para se cadastrar</Text>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Nome completo</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Nome completo"
@@ -85,6 +117,7 @@ const RegisterScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Email</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Email"
@@ -97,6 +130,7 @@ const RegisterScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Senha (mínimo 6 caracteres)</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Senha (mínimo 6 caracteres)"
@@ -108,6 +142,7 @@ const RegisterScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Confirmar senha</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Confirmar senha"
@@ -118,8 +153,61 @@ const RegisterScreen = ({ navigation }) => {
                 />
               </View>
 
-              <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-                <Text style={styles.registerButtonText}>Cadastrar</Text>
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Telefone</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="(00) 91234-5678"
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Data de nascimento</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="DD/MM/YYYY"
+                  value={birthDate}
+                  onChangeText={setBirthDate}
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Profissão</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Profissão"
+                  value={profession}
+                  onChangeText={setProfession}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Endereço</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Endereço"
+                  value={address}
+                  onChangeText={setAddress}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.labelText}>Cidade</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Cidade"
+                  value={city}
+                  onChangeText={setCity}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.registerButton} onPress={handleRegister} disabled={loading}>
+                <Text style={styles.registerButtonText}>{loading ? 'Salvando...' : 'Cadastrar'}</Text>
               </TouchableOpacity>
 
               <View style={styles.loginContainer}>
@@ -205,6 +293,11 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginBottom: 30,
+  },
+  labelText: {
+    color: '#333',
+    marginBottom: 6,
+    fontWeight: '600',
   },
   inputContainer: {
     marginBottom: 20,

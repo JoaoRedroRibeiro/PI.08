@@ -11,6 +11,6 @@ export async function getAnalysis(params) {
     if(params.year) urlParams.set('year', params.year)
     if(params.month) urlParams.set('month', params.month)
     
-    const { data } = await api.get('/analysis/monthly_summary?' + urlParams.toString())
+    const { data } = await api.get('/analysis/monthly_summary/?' + urlParams.toString())
     return data
 }

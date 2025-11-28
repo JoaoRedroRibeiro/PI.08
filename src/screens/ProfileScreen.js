@@ -22,8 +22,6 @@ import { updateProfileImage } from '../core/util/update-profile-image';
 import { AuthContext } from '../core/context/auth'
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const USER_ID = 1;
-
 // ProfileField movido para fora e memoizado
 const ProfileField = React.memo(({ label, value, field, icon, isEditing, editedInfo, setEditedInfo }) => (
   <View style={styles.fieldContainer}>
@@ -62,7 +60,8 @@ const ProfileScreen = ({ navigation }) => {
     profession: 'Desenvolvedor',
   });
 
-  const [userId, setUserId] = useState(USER_ID);
+  const { user } = useContext(AuthContext)
+
   const [editedInfo, setEditedInfo] = useState(userInfo);
   const [imageUrl, setImageUrl] = useState('')
   const { setToken } = useContext(AuthContext)
@@ -79,7 +78,7 @@ const ProfileScreen = ({ navigation }) => {
     try {
       // enviar editedInfo (corrigido)
       console.log('Salvando perfil com as seguintes informações:', editedInfo);
-      await updateProfile(userId, editedInfo);
+      await updateProfile(user, editedInfo);
 
       setIsEditing(false);
       Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
@@ -115,7 +114,7 @@ const ProfileScreen = ({ navigation }) => {
 
     try {
 
-      await updateProfileImage(userId, uri)
+      await updateProfileImage(user, uri)
       setImageUrl(uri)
     } catch (error) {
 
@@ -147,7 +146,7 @@ const ProfileScreen = ({ navigation }) => {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await loadUserData(userId);
+        const { data } = await loadUserData(user);
 
         const mapped = {
           name: data.full_name,
@@ -178,13 +177,13 @@ const ProfileScreen = ({ navigation }) => {
     (async () => {
       try {
 
-        const image = await api.get(`/users/${userId}/profile_image?download=false`)
+        const image = await api.get(`/users/${user}/profile_image?download=false`)
 
         if (image.status !== 200) {
           setImageUrl('')
           return
         }
-        setImageUrl(process.env.EXPO_PUBLIC_API_BASE_URL + `/users/${userId}/profile_image?download=false`)
+        setImageUrl(process.env.EXPO_PUBLIC_API_BASE_URL + `/users/${user}/profile_image?download=false`)
       } catch {
         setImageUrl('')
       } f

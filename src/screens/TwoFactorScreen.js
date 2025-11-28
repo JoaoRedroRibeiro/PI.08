@@ -17,13 +17,14 @@ import { twoFactorValidation } from '../core/util/two-factor-login'
 import { useRoute } from '@react-navigation/native';
 import { AuthContext } from '../core/context/auth'
 import AsynStorage from '@react-native-async-storage/async-storage'
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TwoFactorScreen = ({ navigation }) => {
 
     const [verifier, setVerifier] = useState('')
     const [code, setCode] = useState('')
 
-    const { setToken } = useContext(AuthContext)
+    const { setToken, setUser } = useContext(AuthContext)
     const route = useRoute()
 
     const handleValidation = async () => {
@@ -34,7 +35,11 @@ const TwoFactorScreen = ({ navigation }) => {
         try {
             const response = await twoFactorValidation(code, verifier)
             setToken(response.data.access_token)
-            await AsynStorage.setItem('RB_AT', response.data.access_token)
+            setUser(response.data.user_id)
+            await AsyncStorage.multiSet([
+                ['RB_AT', response.data.access_token],
+                ['USER', (response.data.user_id).toString()],
+            ])
             console.log(response.data.access_token)
         } catch {
             Alert.alert('Ops', 'Ocorreu um erro, tente novamente mais tarde.')

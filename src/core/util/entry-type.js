@@ -6,7 +6,7 @@ export async function getEntryTypes() {
 }
 
 export async function createEntryType(name) {
-    const { data } = await api.post('/entry_types', { name })
+    const { data } = await api.post('/entry_types/', { name })
     return data
 }
 

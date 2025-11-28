@@ -5,27 +5,32 @@ export const AuthContext = createContext({
     loading: false,
     token: undefined,
     setToken: () => { },
-    setLoading: () => { }
+    setLoading: () => { },
+    user: undefined,
+    setUser: () => { }
 })
 
 const AuthProvider = ({ children }) => {
 
     const [token, setToken] = useState(undefined)
     const [loading, setLoading] = useState(false)
+    const [user, setUser] = useState(undefined)
 
     useEffect(() => {
         (async () => {
-            const item = await AsyncStorage.getItem('RB_AT')
+            const [[, accessToken], [, u]] = await AsyncStorage.multiGet(['RB_AT', 'USER']);
 
-            if (item) {
-                setToken(item)
+            if (accessToken && u) {
+                setToken(accessToken)
+                setUser(u)
                 return
             }
+            return
         })()
     }, [])
 
     return (
-        <AuthContext.Provider value={{ token, loading, setToken, setLoading }}>
+        <AuthContext.Provider value={{ token, loading, setToken, setLoading, user, setUser }}>
             {children}
         </AuthContext.Provider>
     )
