@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,49 @@ import {
   Modal,
   TextInput,
   Alert,
-  Dimensions
+  Dimensions,
+  Animated,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getEntries, createEntry, updateEntry } from '../core/util/entries';
 import { getCategories } from '../core/util/categories';
+import { chatWithAI } from '../core/util/chat';
 import { AuthContext } from '../core/context/auth'
 
 const { width, height } = Dimensions.get('window');
 const CURRENT_USER = 1
+
+const MessageBubble = ({ message }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+  }, []);
+
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] });
+  const alignRight = message.from === 'user';
+  const bg = alignRight ? '#00C851' : '#1a1a1a';
+  const textColor = alignRight ? '#000' : '#fff';
+
+  return (
+    <Animated.View style={{
+      opacity: anim,
+      transform: [{ translateY }],
+      alignSelf: alignRight ? 'flex-end' : 'flex-start',
+      marginVertical: 6,
+      maxWidth: '85%',
+      backgroundColor: bg,
+      borderRadius: 12,
+      padding: 10,
+      paddingHorizontal: 14,
+    }}>
+      <Text style={{ color: textColor, fontSize: 14 }}>{message.text}</Text>
+      <Text style={{ color: textColor === '#fff' ? '#999' : '#333', fontSize: 10, marginTop: 6, alignSelf: 'flex-end' }}>
+        {new Date(message.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </Text>
+    </Animated.View>
+  );
+}
 
 const RELATORIO = ({ navigation }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -28,7 +62,10 @@ const RELATORIO = ({ navigation }) => {
   const [showAddOptions, setShowAddOptions] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
-  const [aiResponse, setAiResponse] = useState('');
+  const [sendingAI, setSendingAI] = useState(false);
+  // mensagens da conversa (não persistir)
+  const [messages, setMessages] = useState([]); // { id, from: 'user'|'ai', text, time }
+  const scrollMessagesRef = useRef(null);
   const [manualExpense, setManualExpense] = useState({
     description: '',
     amount: '',
@@ -211,40 +248,37 @@ const RELATORIO = ({ navigation }) => {
     return Object.values(yearData).reduce((sum, month) => sum + (month.total || 0), 0);
   };
 
-  const handleAIQuestion = () => {
-    if (!aiQuestion.trim()) {
+  const handleAIQuestion = async () => {
+    const text = aiQuestion?.trim();
+    if (!text) {
       Alert.alert('Erro', 'Por favor, digite uma pergunta');
       return;
     }
 
-    let response = '';
-    const question = aiQuestion.toLowerCase();
+    // adiciona mensagem do usuário localmente
+    const userMsg = { id: Date.now() + '_u', from: 'user', text, time: new Date().toISOString() };
+    setMessages(prev => [...prev, userMsg]);
+    setAiQuestion('');
+    setSendingAI(true);
 
-    if (question.includes('maior gasto') || question.includes('mais gastei')) {
-      const yearData = financialData[selectedYear] || {};
-      const monthTotals = Object.entries(yearData).map(([month, data]) => ({
-        month,
-        total: data.total
-      }));
-      const maxMonth = monthTotals.reduce((max, current) =>
-        current.total > max.total ? current : max, { month: '', total: 0 });
-
-      response = `Em ${selectedYear}, você gastou mais em ${maxMonth.month} com um total de R$ ${maxMonth.total.toFixed(2)}.`;
-    } else if (question.includes('categoria') || question.includes('onde')) {
-      response = `Em ${selectedYear}, suas principais categorias de gastos foram: Alimentação, Transporte, Casa e Saúde. A alimentação representa cerca de 30% dos seus gastos totais.`;
-    } else if (question.includes('total') || question.includes('quanto gastei')) {
-      const total = getTotalYear();
-      response = `Em ${selectedYear}, você gastou um total de R$ ${total.toFixed(2)}.`;
-    } else if (question.includes('média') || question.includes('media')) {
-      const total = getTotalYear();
-      const monthsWithData = Object.keys(financialData[selectedYear] || {}).length;
-      const average = monthsWithData > 0 ? total / monthsWithData : 0;
-      response = `Sua média mensal de gastos em ${selectedYear} foi de R$ ${average.toFixed(2)}.`;
-    } else {
-      response = `Com base nos seus dados de ${selectedYear}, posso ajudar você a analisar seus gastos por categoria, identificar padrões de consumo e sugerir otimizações. Tente perguntar sobre "maior gasto", "categoria", "total" ou "média".`;
+    try {
+      // envia para a API de chat
+      const answer = await chatWithAI(text);
+      const aiMsg = { id: Date.now() + '_a', from: 'ai', text: String(answer ?? 'Desculpe, não obtive resposta.'), time: new Date().toISOString() };
+      setMessages(prev => [...prev, aiMsg]);
+      // rola para fim após pequena espera para a animação do item
+      setTimeout(() => {
+        if (scrollMessagesRef.current) {
+          scrollMessagesRef.current.scrollToEnd({ animated: true });
+        }
+      }, 150);
+    } catch {
+      
+      const aiMsg = { id: Date.now() + '_a_err', from: 'ai', text: 'Erro ao obter resposta. Tente novamente.', time: new Date().toISOString() };
+      setMessages(prev => [...prev, aiMsg]);
+    } finally {
+      setSendingAI(false);
     }
-
-    setAiResponse(response);
   };
 
   // carrega categorias da API
@@ -528,37 +562,52 @@ const RELATORIO = ({ navigation }) => {
               <View style={styles.aiHeader}>
                 <Ionicons name="chatbubble-ellipses" size={32} color="#00C851" />
                 <Text style={styles.aiTitle}>
-                  Pergunte sobre seus dados de {selectedYear}
+                  Assistente — {selectedYear}
                 </Text>
               </View>
 
               <Text style={styles.aiDescription}>
-                Faça perguntas como: "Qual foi meu maior gasto?", "Em que categoria mais gastei?", "Qual minha média mensal?"
+                Converse com a I.A. — faça perguntas sobre seus gastos e categorias.
               </Text>
 
-              <TextInput
-                style={styles.aiInput}
-                placeholder="Digite sua pergunta aqui..."
-                placeholderTextColor="#999"
-                value={aiQuestion}
-                onChangeText={setAiQuestion}
-                multiline
-              />
+              <View style={{ height: 12 }} />
 
-              <TouchableOpacity
-                style={styles.aiButton}
-                onPress={handleAIQuestion}
+              <ScrollView
+                ref={scrollMessagesRef}
+                style={{ flex: 1, marginBottom: 12, maxHeight: height * 0.45 }}
+                contentContainerStyle={{ paddingVertical: 6 }}
               >
-                <Ionicons name="send" size={20} color="#fff" />
-                <Text style={styles.aiButtonText}>Perguntar</Text>
-              </TouchableOpacity>
+                {messages.length === 0 ? (
+                  <Text style={{ color: '#999', textAlign: 'center', marginTop: 10 }}>
+                    Nenhuma mensagem ainda. Pergunte algo para começar.
+                  </Text>
+                ) : (
+                  messages.map(msg => <MessageBubble key={msg.id} message={msg} />)
+                )}
+              </ScrollView>
 
-              {aiResponse ? (
-                <View style={styles.aiResponse}>
-                  <Text style={styles.aiResponseLabel}>Resposta:</Text>
-                  <Text style={styles.aiResponseText}>{aiResponse}</Text>
-                </View>
-              ) : null}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <TextInput
+                  style={[styles.aiInput, { flex: 1, minHeight: 44 }]}
+                  placeholder="Digite sua pergunta aqui..."
+                  placeholderTextColor="#999"
+                  value={aiQuestion}
+                  onChangeText={setAiQuestion}
+                  multiline={false}
+                />
+
+                <TouchableOpacity
+                  style={[styles.aiButton, { paddingVertical: 10, paddingHorizontal: 14 }]}
+                  onPress={handleAIQuestion}
+                  disabled={sendingAI}
+                >
+                  {sendingAI ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Ionicons name="send" size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -1025,23 +1074,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 10,
   },
-  aiResponse: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#00C851',
+  messagesContainer: {
+    flex: 1,
+    marginTop: 10,
   },
-  aiResponseLabel: {
+  messagesContent: {
+    paddingBottom: 20,
+  },
+  sendingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  sendingText: {
     color: '#00C851',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  aiResponseText: {
-    color: '#fff',
     fontSize: 14,
-    lineHeight: 20,
+    marginLeft: 8,
   },
   optionsModalOverlay: {
     flex: 1,
@@ -1209,6 +1258,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  // componente de bolha com animação simples
 });
 
 export default RELATORIO;
